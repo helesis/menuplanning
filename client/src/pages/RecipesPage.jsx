@@ -215,15 +215,30 @@ function RecipeDetail({ detail }) {
         <div style={{
           margin: '16px 0', padding: 16, borderRadius: 10,
           background: 'var(--gold-bg)', border: '1px solid var(--gold-border)',
-          display: 'flex', alignItems: 'center', gap: 12,
+          display: 'flex', alignItems: 'center', gap: 16,
         }}>
           <TrendingUp size={20} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--gold)' }}>
-              {detail.total.toFixed(2)} <span style={{ fontSize: 14 }}>TL</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 24, alignItems: 'baseline', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--gold)' }}>
+                  {detail.total.toFixed(2)} <span style={{ fontSize: 14 }}>TL</span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>toplam reçete</div>
+              </div>
+              {detail.per100g != null && (
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--gold)' }}>
+                    {detail.per100g.toFixed(2)} <span style={{ fontSize: 14 }}>TL</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                    100g başına · {detail.totalGrams}g toplam
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              Toplam hammadde maliyeti · {detail.detail?.length} malzeme
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+              {detail.detail?.length} malzeme
               {liveCount > 0 && <span style={{ color: '#16a34a', marginLeft: 8 }}>● {liveCount} canlı fiyat</span>}
               {!hasPrice && <span style={{ color: '#f59e0b', marginLeft: 8 }}>⚠ Bazı fiyatlar eksik</span>}
             </div>

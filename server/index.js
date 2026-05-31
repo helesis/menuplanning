@@ -1500,7 +1500,30 @@ function calcRecipeCost(y_no) {
     total += maliyet;
     return { ingredient: row.ingredient, miktar: row.miktar, birim: row.birim, fiyat, maliyet, source };
   });
-  return { total: Math.round(total * 100) / 100, detail };
+  // Toplam ağırlık (gram cinsinden) — sadece ağırlık/hacim birimleri sayılır
+  let totalGrams = 0;
+  for (const row of rows) {
+    const b = (row.birim || '').trim().toLowerCase();
+    const m = row.miktar || 0;
+    if      (b === 'kg' || b === 'kilogram')                          totalGrams += m * 1000;
+    else if (b === 'g'  || b === 'gr' || b === 'gram')                totalGrams += m;
+    else if (b === 'mg')                                              totalGrams += m / 1000;
+    else if (b === 'l'  || b === 'lt' || b === 'litre' || b === 'liter') totalGrams += m * 1000;
+    else if (b === 'cl')                                              totalGrams += m * 10;
+    else if (b === 'ml')                                              totalGrams += m;
+    // adet vb. → dahil etme
+  }
+
+  const per100g = totalGrams > 0
+    ? Math.round((total * 100 / totalGrams) * 10000) / 10000
+    : null;
+
+  return {
+    total:    Math.round(total * 100) / 100,
+    totalGrams: Math.round(totalGrams * 100) / 100,
+    per100g,
+    detail,
+  };
 }
 
 // GET /api/recipes — liste (arama + sayfalama)
