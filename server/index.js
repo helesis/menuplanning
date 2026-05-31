@@ -46,7 +46,7 @@ const db = low(new FileSync(path.join(__dirname, 'db.json')));
 
 // ─── Schema defaults ────────────────────────────────────────────────────────────
 
-db.defaults({ menus: [], templates: [], users: [], _seq: 200 }).write();
+db.defaults({ menus: [], templates: [], users: [], customRecipes: [], _seq: 200 }).write();
 
 // ─── Seed default admin user ─────────────────────────────────────────────────
 if (!db.get('users').size().value()) {
@@ -1481,14 +1481,57 @@ function matchDishToRecipes(dishName) {
 
 // POST /api/recipe-match — toplu yemek adı → reçete eşleştirme
 app.post('/api/recipe-match', (req, res) => {
-  const { names } = req.body; // string[]
+  const { names } = req.body;
   if (!Array.isArray(names)) return res.status(400).json({ error: 'names array required' });
+  const customRecipes = db.get('customRecipes').value();
   const result = {};
   for (const name of names) {
     const m = matchDishToRecipes(name);
+    const custom = customRecipes.find(cr => cr.dish_name === name);
+    if (custom) {
+      m.unshift({ y_no: null, adi: custom.dish_name, matchType: 'custom', customId: custom.id });
+    }
     if (m.length > 0) result[name] = m;
   }
   res.json(result);
+});
+
+// ─── Custom Recipes ───────────────────────────────────────────────────────────
+
+app.get('/api/custom-recipes', (req, res) => {
+  const { dish_name } = req.query;
+  if (dish_name) {
+    const r = db.get('customRecipes').find({ dish_name }).value();
+    return res.json(r || null);
+  }
+  res.json(db.get('customRecipes').value());
+});
+
+app.post('/api/custom-recipes', (req, res) => {
+  const { dish_name, ingredients } = req.body;
+  if (!dish_name) return res.status(400).json({ error: 'dish_name gerekli' });
+  const existing = db.get('customRecipes').find({ dish_name }).value();
+  if (existing) {
+    db.get('customRecipes').find({ dish_name }).assign({ ingredients: ingredients || [] }).write();
+    return res.json(db.get('customRecipes').find({ dish_name }).value());
+  }
+  const id = Date.now();
+  const recipe = { id, dish_name, ingredients: ingredients || [] };
+  db.get('customRecipes').push(recipe).write();
+  res.json(recipe);
+});
+
+app.put('/api/custom-recipes/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const { ingredients } = req.body;
+  db.get('customRecipes').find({ id }).assign({ ingredients }).write();
+  res.json(db.get('customRecipes').find({ id }).value());
+});
+
+app.delete('/api/custom-recipes/:id', (req, res) => {
+  const id = Number(req.params.id);
+  db.get('customRecipes').remove({ id }).write();
+  res.json({ ok: true });
 });
 
 // Malzeme fiyat haritası (isim → ing kaydı)
