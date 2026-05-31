@@ -615,75 +615,68 @@ function RecipePanel({ panel, onClose, onSaved }) {
               Malzemeleri ekleyip miktarlarını belirtin. Kaydedince özel reçete olarak saklanır.
             </div>
 
-            {/* Ingredient rows */}
-            {editIngredients.length > 0 && (
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 12 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '4px 0', textAlign: 'left', color: 'var(--text-dim)', fontWeight: 600 }}>Malzeme</th>
-                    <th style={{ padding: '4px 0', textAlign: 'right', color: 'var(--text-dim)', fontWeight: 600, width: 70 }}>Miktar</th>
-                    <th style={{ padding: '4px 0', textAlign: 'right', color: 'var(--text-dim)', fontWeight: 600, width: 50 }}>Birim</th>
-                    <th style={{ width: 28 }} />
+            {/* Ingredient table + inline add row */}
+            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '4px 0', textAlign: 'left', color: 'var(--text-dim)', fontWeight: 600 }}>Malzeme</th>
+                  <th style={{ padding: '4px 0', textAlign: 'right', color: 'var(--text-dim)', fontWeight: 600, width: 70 }}>Miktar</th>
+                  <th style={{ padding: '4px 0', textAlign: 'right', color: 'var(--text-dim)', fontWeight: 600, width: 54 }}>Birim</th>
+                  <th style={{ width: 28 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {editIngredients.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '8px 0', color: 'var(--text-xdim)', fontSize: 12, textAlign: 'center' }}>
+                      Henüz malzeme eklenmedi
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {editIngredients.map((ing, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '5px 0', fontSize: 12 }}>{ing.ing_name}</td>
-                      <td style={{ padding: '5px 4px', textAlign: 'right' }}>
-                        <input
-                          type="number"
-                          value={ing.miktar}
-                          onChange={e => updateIngredient(idx, 'miktar', e.target.value)}
-                          style={{
-                            width: 64, textAlign: 'right', fontSize: 12,
-                            padding: '3px 6px', border: '1px solid var(--border)',
-                            borderRadius: 4, background: 'var(--surface)', color: 'var(--text)',
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: '5px 4px', textAlign: 'right' }}>
-                        <select
-                          value={ing.birim}
-                          onChange={e => updateIngredient(idx, 'birim', e.target.value)}
-                          style={{
-                            fontSize: 11, padding: '3px 4px',
-                            border: '1px solid var(--border)', borderRadius: 4,
-                            background: 'var(--surface)', color: 'var(--text)',
-                          }}
-                        >
-                          <option value="g">g</option>
-                          <option value="cl">cl</option>
-                          <option value="adet">adet</option>
-                          <option value="ml">ml</option>
-                          <option value="kg">kg</option>
-                        </select>
-                      </td>
-                      <td style={{ padding: '5px 0', textAlign: 'center' }}>
-                        <button
-                          onClick={() => removeIngredient(idx)}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--red)', padding: 2, display: 'flex',
-                          }}
-                        >
-                          <Minus size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            {editIngredients.length === 0 && (
-              <div style={{ color: 'var(--text-xdim)', fontSize: 12, marginBottom: 12, textAlign: 'center', padding: '8px 0' }}>
-                Henüz malzeme eklenmedi
-              </div>
-            )}
-
-            {/* Add ingredient row */}
-            <IngredientAddRow onAdd={addIngredient} />
+                )}
+                {editIngredients.map((ing, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '5px 0', fontSize: 12 }}>{ing.ing_name}</td>
+                    <td style={{ padding: '5px 4px', textAlign: 'right' }}>
+                      <input
+                        type="number"
+                        value={ing.miktar}
+                        onChange={e => updateIngredient(idx, 'miktar', e.target.value)}
+                        style={{
+                          width: 64, textAlign: 'right', fontSize: 12,
+                          padding: '3px 6px', border: '1px solid var(--border)',
+                          borderRadius: 4, background: 'var(--surface)', color: 'var(--text)',
+                        }}
+                      />
+                    </td>
+                    <td style={{ padding: '5px 4px', textAlign: 'right' }}>
+                      <select
+                        value={ing.birim}
+                        onChange={e => updateIngredient(idx, 'birim', e.target.value)}
+                        style={{
+                          fontSize: 11, padding: '3px 4px',
+                          border: '1px solid var(--border)', borderRadius: 4,
+                          background: 'var(--surface)', color: 'var(--text)',
+                        }}
+                      >
+                        <option value="g">g</option>
+                        <option value="cl">cl</option>
+                        <option value="adet">adet</option>
+                        <option value="ml">ml</option>
+                        <option value="kg">kg</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: '5px 0', textAlign: 'center' }}>
+                      <button onClick={() => removeIngredient(idx)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 2, display: 'flex' }}>
+                        <Minus size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {/* Inline add row */}
+                <IngredientAddRow onAdd={addIngredient} />
+              </tbody>
+            </table>
 
             {/* Save / Cancel */}
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -894,57 +887,59 @@ function IngredientAddRow({ onAdd }) {
   }
 
   return (
-    <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-        Malzeme Ekle
-      </div>
-      <div className="ing-search-wrap" style={{ marginBottom: 8 }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-xdim)', pointerEvents: 'none' }} />
-          <input
-            value={query}
-            onChange={e => { setQuery(e.target.value); setSelected(null); search(e.target.value) }}
-            onFocus={() => results.length > 0 && setOpen(true)}
-            placeholder="Malzeme ara… (min 2 harf)"
-            style={{
-              width: '100%', padding: '7px 10px 7px 28px', fontSize: 12,
-              border: '1px solid var(--border)', borderRadius: 6,
-              background: 'var(--surface)', color: 'var(--text)',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-        {open && results.length > 0 && (
-          <div className="ing-dropdown">
-            {results.map(r => (
-              <div key={r.ing_no} className="ing-dropdown-item" onMouseDown={() => selectIng(r)}>
-                <span style={{ fontWeight: 500 }}>{r.ing_name}</span>
-                {r.ing_fiyat > 0 && <span style={{ color: 'var(--text-xdim)', marginLeft: 8, fontSize: 11 }}>{r.ing_fiyat} TL/{r.ing_birim}</span>}
-              </div>
-            ))}
+    <tr style={{ borderTop: '2px dashed var(--border)', background: 'var(--surface2)' }}>
+      <td style={{ padding: '6px 0' }}>
+        <div className="ing-search-wrap">
+          <div style={{ position: 'relative' }}>
+            <Search size={11} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-xdim)', pointerEvents: 'none' }} />
+            <input
+              value={query}
+              onChange={e => { setQuery(e.target.value); setSelected(null); search(e.target.value) }}
+              onFocus={() => results.length > 0 && setOpen(true)}
+              placeholder="Malzeme ara…"
+              style={{
+                width: '100%', padding: '5px 8px 5px 24px', fontSize: 12,
+                border: '1px solid var(--border)', borderRadius: 5,
+                background: 'var(--surface)', color: 'var(--text)',
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {open && results.length > 0 && (
+            <div className="ing-dropdown">
+              {results.map(r => (
+                <div key={r.ing_no} className="ing-dropdown-item" onMouseDown={() => selectIng(r)}>
+                  <span style={{ fontWeight: 500 }}>{r.ing_name}</span>
+                  {r.ing_fiyat > 0 && <span style={{ color: 'var(--text-xdim)', marginLeft: 8, fontSize: 10 }}>{r.ing_fiyat} TL/{r.ing_birim}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </td>
+      <td style={{ padding: '6px 4px', textAlign: 'right' }}>
         <input
           type="number"
           value={miktar}
           onChange={e => setMiktar(e.target.value)}
-          placeholder="Miktar"
+          placeholder="0"
           disabled={!selected}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
           style={{
-            flex: 1, padding: '7px 10px', fontSize: 12,
-            border: '1px solid var(--border)', borderRadius: 6,
-            background: selected ? 'var(--surface)' : 'var(--bg)', color: 'var(--text)',
+            width: 64, textAlign: 'right', fontSize: 12,
+            padding: '5px 6px', border: '1px solid var(--border)',
+            borderRadius: 5, background: selected ? 'var(--surface)' : 'var(--bg)', color: 'var(--text)',
           }}
         />
+      </td>
+      <td style={{ padding: '6px 4px', textAlign: 'right' }}>
         <select
           value={birim}
           onChange={e => setBirim(e.target.value)}
           disabled={!selected}
           style={{
-            padding: '7px 8px', fontSize: 12,
-            border: '1px solid var(--border)', borderRadius: 6,
+            fontSize: 11, padding: '5px 4px', width: 54,
+            border: '1px solid var(--border)', borderRadius: 5,
             background: selected ? 'var(--surface)' : 'var(--bg)', color: 'var(--text)',
           }}
         >
@@ -954,21 +949,23 @@ function IngredientAddRow({ onAdd }) {
           <option value="adet">adet</option>
           <option value="kg">kg</option>
         </select>
+      </td>
+      <td style={{ padding: '6px 0', textAlign: 'center' }}>
         <button
           onClick={handleAdd}
           disabled={!selected || !miktar}
           style={{
-            padding: '7px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6,
-            border: 'none', cursor: selected && miktar ? 'pointer' : 'not-allowed',
             background: selected && miktar ? 'var(--gold)' : 'var(--border)',
             color: selected && miktar ? '#fff' : 'var(--text-xdim)',
-            display: 'flex', alignItems: 'center', gap: 5,
+            border: 'none', borderRadius: 5, padding: '4px 6px',
+            cursor: selected && miktar ? 'pointer' : 'not-allowed',
+            display: 'flex', alignItems: 'center',
           }}
         >
-          <Plus size={13} /> Ekle
+          <Plus size={13} />
         </button>
-      </div>
-    </div>
+      </td>
+    </tr>
   )
 }
 
