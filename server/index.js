@@ -50,7 +50,7 @@ db.defaults({ menus: [], templates: [], users: [], _seq: 200 }).write();
 
 // ─── Seed default admin user ─────────────────────────────────────────────────
 if (!db.get('users').size().value()) {
-  const hash = bcrypt.hashSync('admin123', 10);
+  const hash = bcrypt.hashSync('admin', 10);
   db.get('users').push({ id: 1, username: 'admin', password: hash, role: 'Admin' }).write();
 }
 
