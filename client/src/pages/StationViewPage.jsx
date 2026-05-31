@@ -295,6 +295,9 @@ function RecipeMatchIcon({ dishKey, matches, activePanel, setActivePanel }) {
     byType[m.matchType].push(m)
   }
 
+  // Tam ad eşleşmesi (name_exact) varsa, ad benzerliğini (name_partial) gösterme
+  if (byType['name_exact']) delete byType['name_partial']
+
   const handleClick = (e, type, recipes) => {
     e.nativeEvent.stopImmediatePropagation()
     const panelKey = `${dishKey}_${type}`
