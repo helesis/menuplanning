@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Utensils, Leaf, Sprout, Flame, Snowflake, Cake, Trash2,
-  X, TrendingUp, PlusCircle, Pencil, Check, Star,
+  BookOpen, X, TrendingUp, PlusCircle, Pencil, Check, Star,
   Search, Plus, Minus,
 } from 'lucide-react'
 import * as api from '../api.js'
@@ -176,9 +176,37 @@ export default function StationViewPage() {
                       <div style={{ color: 'var(--text-xdim)', fontSize: 12, padding: '8px 0' }}>Yemek yok</div>
                     )}
                     {station.dishes.map(dish => {
-                      const matches   = recipeMatches[dish.name] || []
-                      const hasCustom = matches.some(m => m.matchType === 'custom')
-                      const customMatch = matches.find(m => m.matchType === 'custom')
+                      const matches     = recipeMatches[dish.name] || []
+                      const hasExact    = matches.some(m => m.matchType === 'name_exact' || m.matchType === 'custom')
+                      const hasNearby   = !hasExact && matches.length > 0
+                      const exactMatch  = matches.find(m => m.matchType === 'name_exact') || matches.find(m => m.matchType === 'custom')
+                      const nearbyList  = matches.filter(m => m.matchType !== 'custom')
+
+                      const openExact = (e) => {
+                        e.nativeEvent.stopImmediatePropagation()
+                        const panelKey = `exact_${dish.id}`
+                        setActivePanel(prev => prev?.key === panelKey ? null : {
+                          key: panelKey, dishName: dish.name,
+                          type: exactMatch.matchType, recipes: [exactMatch], mode: 'view',
+                        })
+                      }
+                      const openNearby = (e) => {
+                        e.nativeEvent.stopImmediatePropagation()
+                        const panelKey = `nearby_${dish.id}`
+                        setActivePanel(prev => prev?.key === panelKey ? null : {
+                          key: panelKey, dishName: dish.name,
+                          type: 'nearby', recipes: nearbyList, mode: 'select',
+                        })
+                      }
+                      const openNew = (e) => {
+                        e.nativeEvent.stopImmediatePropagation()
+                        const panelKey = `new_${dish.id}`
+                        setActivePanel(prev => prev?.key === panelKey ? null : {
+                          key: panelKey, dishName: dish.name,
+                          type: 'new', recipes: [], mode: 'create',
+                        })
+                      }
+
                       return (
                         <div key={dish.id} className="station-view-dish">
                           <span className="station-view-dish-name">
@@ -192,49 +220,25 @@ export default function StationViewPage() {
                               ? <span className="badge badge-blue" style={{ fontSize: 10 }}><Leaf size={9} /> Vej.</span>
                               : null}
 
-                            {hasCustom ? (
-                              <span
-                                className="rm-chip"
-                                title="Özel Reçete"
-                                onClick={e => {
-                                  e.nativeEvent.stopImmediatePropagation()
-                                  const panelKey = `custom_${dish.id}`
-                                  setActivePanel(prev =>
-                                    prev?.key === panelKey ? null : {
-                                      key: panelKey,
-                                      dishName: dish.name,
-                                      type: 'custom',
-                                      recipes: [customMatch],
-                                      mode: 'view',
-                                    }
-                                  )
-                                }}
-                                style={{
-                                  cursor: 'pointer', padding: '1px 2px', borderRadius: 3,
-                                  background: activePanel?.key === `custom_${dish.id}` ? '#8a6c2e22' : 'transparent',
-                                }}
-                              >
-                                <Star size={12} style={{ color: '#8a6c2e' }} />
+                            {hasExact && (
+                              <span className="rm-chip" title="Reçete (Tam Eşleşme)" onClick={openExact}
+                                style={{ cursor: 'pointer', padding: '1px 2px', borderRadius: 3,
+                                  background: activePanel?.key === `exact_${dish.id}` ? '#22c55e22' : 'transparent' }}>
+                                <Star size={12} style={{ color: '#22c55e' }} />
                               </span>
-                            ) : (
-                              <span
-                                className="rm-chip"
-                                title="Reçete ekle"
-                                onClick={e => {
-                                  e.nativeEvent.stopImmediatePropagation()
-                                  const panelKey = `new_${dish.id}`
-                                  setActivePanel(prev =>
-                                    prev?.key === panelKey ? null : {
-                                      key: panelKey,
-                                      dishName: dish.name,
-                                      type: 'new',
-                                      recipes: [],
-                                      mode: 'create',
-                                    }
-                                  )
-                                }}
-                                style={{ cursor: 'pointer', padding: '1px 2px', borderRadius: 3 }}
-                              >
+                            )}
+
+                            {hasNearby && (
+                              <span className="rm-chip" title="Yakın eşleşme — reçeteye dönüştür" onClick={openNearby}
+                                style={{ cursor: 'pointer', padding: '1px 2px', borderRadius: 3,
+                                  background: activePanel?.key === `nearby_${dish.id}` ? '#f59e0b22' : 'transparent' }}>
+                                <Star size={12} style={{ color: '#f59e0b' }} />
+                              </span>
+                            )}
+
+                            {!hasExact && (
+                              <span className="rm-chip" title="Reçete ekle" onClick={openNew}
+                                style={{ cursor: 'pointer', padding: '1px 2px', borderRadius: 3 }}>
                                 <PlusCircle size={13} style={{ color: 'var(--text-xdim)' }} />
                               </span>
                             )}
@@ -440,9 +444,13 @@ function RecipePanel({ panel, onClose, onSaved }) {
 
   const canEdit = type === 'custom' || type === 'name_exact'
   const isEditMode = mode === 'edit' || mode === 'create'
+  const isSelectMode = mode === 'select'
 
-  const headerColor = isEditMode ? '#8a6c2e' : typeInfo.color
-  const headerLabel = mode === 'create' ? 'Yeni Reçete' : mode === 'edit' ? 'Reçete Düzenle' : typeInfo.label
+  const headerColor = isEditMode ? '#8a6c2e' : isSelectMode ? '#f59e0b' : typeInfo.color
+  const headerLabel = mode === 'create' ? 'Yeni Reçete'
+    : mode === 'edit' ? 'Reçete Düzenle'
+    : mode === 'select' ? 'Yakın Eşleşmeler'
+    : typeInfo.label
 
   return (
     <div
@@ -510,8 +518,18 @@ function RecipePanel({ panel, onClose, onSaved }) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+        {/* SELECT MODE */}
+        {isSelectMode && (
+          <NearbySelectContent
+            dishName={dishName}
+            recipes={recipes}
+            onSaved={() => { onSaved(dishName); onClose() }}
+            onClose={onClose}
+          />
+        )}
+
         {/* VIEW MODE */}
-        {!isEditMode && (
+        {!isEditMode && !isSelectMode && (
           <>
             {detailLoading && <div style={{ padding: 24, textAlign: 'center' }}><div className="spinner" /></div>}
             {detail && (
@@ -728,6 +746,110 @@ function CustomRecipeView({ dishName }) {
       ) : (
         <div style={{ color: 'var(--text-xdim)', fontSize: 12 }}>Malzeme eklenmemiş</div>
       )}
+    </div>
+  )
+}
+
+function NearbySelectContent({ dishName, recipes, onSaved, onClose }) {
+  const [selected, setSelected] = useState(recipes[0]?.y_no ?? null)
+  const [detail, setDetail]     = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [importing, setImporting] = useState(false)
+
+  useEffect(() => {
+    if (!selected) return
+    setLoading(true)
+    setDetail(null)
+    fetch(`/api/recipes/${selected}`)
+      .then(r => r.json())
+      .then(d => { setDetail(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [selected])
+
+  async function handleImport() {
+    if (!detail) return
+    setImporting(true)
+    const ingredients = (detail.detail || []).map(row => ({
+      ing_no: null,
+      ing_name: row.ingredient,
+      miktar: row.miktar,
+      birim: row.birim || 'g',
+    }))
+    await fetch('/api/custom-recipes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dish_name: dishName, ingredients }),
+    })
+    setImporting(false)
+    onSaved()
+  }
+
+  return (
+    <div style={{ paddingTop: 12 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
+        Aşağıdaki yakın eşleşmelerden birini seçip <strong>{dishName}</strong> adına kaydedin.
+      </div>
+
+      {/* Seçim listesi */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+        {recipes.map(r => (
+          <button
+            key={r.y_no}
+            onClick={() => setSelected(r.y_no)}
+            style={{
+              textAlign: 'left', padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+              border: `1.5px solid ${selected === r.y_no ? '#f59e0b' : 'var(--border)'}`,
+              background: selected === r.y_no ? '#f59e0b14' : 'var(--surface)',
+              fontSize: 13, fontWeight: selected === r.y_no ? 600 : 400, color: 'var(--text)',
+            }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--text-xdim)', marginBottom: 2 }}>
+              {r.matchType === 'name_partial' ? 'Ad Benzerliği' : r.matchType === 'ingredient_exact' ? 'Malzeme Olarak' : 'Malzeme Benzerliği'}
+            </div>
+            {r.adi}
+          </button>
+        ))}
+      </div>
+
+      {/* Seçili reçete önizleme */}
+      {loading && <div style={{ textAlign: 'center', padding: 12 }}><div className="spinner" /></div>}
+      {detail && (
+        <div style={{
+          border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px',
+          marginBottom: 14, background: 'var(--surface2)',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{detail.adi}</div>
+          {detail.detail?.length > 0 ? (
+            <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+              <tbody>
+                {detail.detail.slice(0, 8).map((row, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '4px 0' }}>{row.ingredient}</td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', color: 'var(--text-dim)' }}>{row.miktar} {row.birim}</td>
+                  </tr>
+                ))}
+                {detail.detail.length > 8 && (
+                  <tr><td colSpan={2} style={{ padding: '4px 0', color: 'var(--text-xdim)', fontSize: 11 }}>+{detail.detail.length - 8} malzeme daha…</td></tr>
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--text-xdim)' }}>Malzeme bilgisi yok</div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="btn btn-primary"
+          style={{ flex: 1, fontSize: 13 }}
+          onClick={handleImport}
+          disabled={!detail || importing}
+        >
+          <Check size={13} /> {importing ? 'Kaydediliyor…' : 'Bu Reçeteyi Kullan'}
+        </button>
+        <button className="btn" style={{ fontSize: 13 }} onClick={onClose}>İptal</button>
+      </div>
     </div>
   )
 }
