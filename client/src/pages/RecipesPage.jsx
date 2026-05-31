@@ -206,6 +206,7 @@ function RecipeDetail({ detail }) {
     : []
 
   const hasPrice = detail.detail && detail.detail.some(r => r.fiyat > 0)
+  const liveCount = detail.detail ? detail.detail.filter(r => r.source === 'live').length : 0
 
   return (
     <div>
@@ -223,6 +224,7 @@ function RecipeDetail({ detail }) {
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
               Toplam hammadde maliyeti · {detail.detail?.length} malzeme
+              {liveCount > 0 && <span style={{ color: '#16a34a', marginLeft: 8 }}>● {liveCount} canlı fiyat</span>}
               {!hasPrice && <span style={{ color: '#f59e0b', marginLeft: 8 }}>⚠ Bazı fiyatlar eksik</span>}
             </div>
           </div>
@@ -251,8 +253,9 @@ function RecipeDetail({ detail }) {
                   <td style={{ padding: '8px 16px', textAlign: 'right', color: 'var(--text-dim)' }}>
                     {row.miktar} {row.birim}
                   </td>
-                  <td style={{ padding: '8px 16px', textAlign: 'right', color: row.fiyat > 0 ? 'var(--text-dim)' : '#fbbf24' }}>
+                  <td style={{ padding: '8px 16px', textAlign: 'right', color: row.source === 'live' ? '#16a34a' : row.fiyat > 0 ? 'var(--text-dim)' : '#fbbf24' }}>
                     {row.fiyat > 0 ? `${row.fiyat.toFixed(4)} TL/${row.birim}` : '—'}
+                    {row.source === 'live' && <span title="Canlı alış fiyatı" style={{ marginLeft: 4, fontSize: 10 }}>●</span>}
                   </td>
                   <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: row.maliyet > 0 ? 600 : 400, color: row.maliyet > 0 ? 'var(--text)' : 'var(--text-xdim)' }}>
                     {row.maliyet > 0 ? `${row.maliyet.toFixed(2)} TL` : '—'}

@@ -1302,6 +1302,50 @@ app.post('/api/suggestions/move', (req, res) => {
   res.json({ ok: true, moved });
 });
 
+// ── COST-ANALYSIS DB (PostgreSQL canlı fiyatlar) ──────────────────────────────
+let livePriceMap = {}; // UPPER(ing_name) → fiyat (TL/kg)
+
+async function loadLivePrices() {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      host:     process.env.COST_DB_HOST     || '127.0.0.1',
+      port:     parseInt(process.env.COST_DB_PORT || '5434'),
+      database: process.env.COST_DB_NAME     || 'cost_analysis',
+      user:     process.env.COST_DB_USER     || 'cost',
+      password: process.env.COST_DB_PASSWORD || 'cost_guclu_sifre_2024',
+    });
+    // Son ayın ağırlıklı ortalama birim fiyatı (miktar ile ağırlıklı)
+    const { rows } = await pool.query(`
+      SELECT
+        UPPER(TRIM(stok_mali)) AS stok_adi,
+        birim,
+        SUM(tuk_miktar * birim_fiyat) / NULLIF(SUM(tuk_miktar), 0) AS agirlikli_fiyat
+      FROM fb_cost.tuketim
+      WHERE tip = 'yiyecek'
+        AND birim_fiyat > 0
+        AND tarih_str = (
+          SELECT MAX(tarih_str) FROM fb_cost.tuketim
+          WHERE tip = 'yiyecek' AND birim_fiyat > 0
+        )
+      GROUP BY UPPER(TRIM(stok_mali)), birim
+    `);
+    const map = {};
+    for (const r of rows) {
+      map[r.stok_adi] = parseFloat(r.agirlikli_fiyat) || 0;
+    }
+    livePriceMap = map;
+    await pool.end();
+    console.log(`[cost-db] ${Object.keys(map).length} malzeme fiyatı yüklendi.`);
+  } catch (err) {
+    console.warn('[cost-db] Canlı fiyat yüklenemedi, statik fiyatlar kullanılacak:', err.message);
+  }
+}
+
+loadLivePrices();
+// Her 6 saatte bir güncelle
+setInterval(loadLivePrices, 6 * 60 * 60 * 1000);
+
 // ── REÇETE VERİTABANI ─────────────────────────────────────────────────────────
 const recipesData = JSON.parse(fs.readFileSync(path.join(__dirname, 'recipes.json'), 'utf8'));
 const recipeProducts    = recipesData.products;    // 1467 ürün
@@ -1403,17 +1447,21 @@ for (const row of recipeIngredients) {
   ingredientsByProduct[row.product_no].push(row);
 }
 
-// Reçete maliyeti hesapla
+// Reçete maliyeti hesapla (canlı DB fiyatı öncelikli, yoksa statik)
 function calcRecipeCost(y_no) {
   const rows = ingredientsByProduct[y_no] || [];
   let total = 0;
   const detail = rows.map(row => {
     const ingKey = row.ingredient ? row.ingredient.trim().toUpperCase() : '';
+    // Önce canlı fiyat, sonra statik inglist fiyatı
+    const livePrice = livePriceMap[ingKey];
     const ing = ingMap[ingKey];
-    const fiyat = ing ? ing.ing_fiyat : 0;
+    const staticPrice = ing ? ing.ing_fiyat : 0;
+    const fiyat = (livePrice != null && livePrice > 0) ? livePrice : staticPrice;
+    const source = (livePrice != null && livePrice > 0) ? 'live' : 'static';
     const maliyet = fiyat * (row.miktar || 0);
     total += maliyet;
-    return { ingredient: row.ingredient, miktar: row.miktar, birim: row.birim, fiyat, maliyet };
+    return { ingredient: row.ingredient, miktar: row.miktar, birim: row.birim, fiyat, maliyet, source };
   });
   return { total: Math.round(total * 100) / 100, detail };
 }
