@@ -692,3 +692,109 @@ table .inside-row { cursor: pointer; }
 
 @media (max-width: 1100px) { .day-grid { grid-template-columns: repeat(4,1fr); } .day-grid-v2 { grid-template-columns: repeat(4,1fr); } }
 @media (max-width: 768px)  { .day-grid { grid-template-columns: repeat(2,1fr); } .day-grid-v2 { grid-template-columns: repeat(2,1fr); } .detail-panel { width: 100%; } }
+
+/* ---- GİRİŞ EKRANI ---- */
+.login-overlay {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 40px 36px;
+  width: 100%; max-width: 400px;
+}
+.login-brand {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 32px;
+}
+.login-title {
+  font-size: 17px; font-weight: 700;
+  color: var(--text); margin-bottom: 22px;
+}
+.login-form { display: flex; flex-direction: column; gap: 16px; }
+.login-field { display: flex; flex-direction: column; gap: 6px; }
+.login-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.login-input-wrap { position: relative; }
+.login-input-icon {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--text-xdim); pointer-events: none;
+}
+.login-field input, .login-field select {
+  width: 100%; padding: 9px 12px 9px 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Mulish', sans-serif;
+  font-size: 14px; color: var(--text);
+  background: var(--surface2);
+  box-sizing: border-box;
+}
+.login-field input:focus, .login-field select:focus {
+  outline: none; border-color: var(--gold-light);
+  box-shadow: 0 0 0 3px rgba(138,108,46,0.1);
+}
+.login-error {
+  background: var(--red-bg); color: var(--red);
+  border: 1px solid rgba(122,45,45,0.2);
+  border-radius: var(--radius);
+  padding: 9px 12px; font-size: 13px; font-weight: 500;
+}
+.login-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 20px; font-size: 14px; font-weight: 600;
+  background: var(--gold); color: #fff;
+  border: none; border-radius: var(--radius);
+  cursor: pointer; font-family: 'Mulish', sans-serif;
+  transition: background .15s;
+}
+.login-btn:hover:not(:disabled) { background: #7a5e25; }
+.login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ---- KULLANICI YÖNETİMİ ---- */
+.users-table {
+  width: 100%; border-collapse: collapse;
+}
+.users-table th {
+  text-align: left; padding: 12px 18px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.users-table td {
+  padding: 12px 18px; font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.users-table tbody tr:last-child td { border-bottom: none; }
+.users-table tbody tr:hover td { background: var(--surface2); }
+
+.role-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 600;
+}
+.role-admin { background: var(--gold-bg); color: var(--gold); }
+.role-user  { background: var(--blue-bg); color: var(--blue); }
+
+.user-form-row { display: flex; gap: 10px; margin-bottom: 12px; align-items: flex-end; flex-wrap: wrap; }
+.user-form .login-field input, .user-form .login-field select {
+  padding: 8px 10px; font-size: 13px;
+}
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-dim); cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.icon-btn:hover { background: var(--bg); color: var(--text); }
+.icon-btn-red:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.icon-btn-green:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+
+.sidebar-nav { display: flex; flex-direction: column; flex: 1; overflow-y: auto; }

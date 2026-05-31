@@ -7,14 +7,16 @@ if (fs.existsSync(envPath)) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
   }
 }
-const express = require('express');
-const cors    = require('cors');
-const low     = require('lowdb');
+const express  = require('express');
+const cors     = require('cors');
+const low      = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
-const path    = require('path');
-const multer  = require('multer');
-const XLSX    = require('xlsx');
+const path     = require('path');
+const multer   = require('multer');
+const XLSX     = require('xlsx');
 const Anthropic = require('@anthropic-ai/sdk');
+const bcrypt   = require('bcryptjs');
+const jwt      = require('jsonwebtoken');
 
 // Kurs kategorileri
 const COURSES = [
@@ -44,7 +46,15 @@ const db = low(new FileSync(path.join(__dirname, 'db.json')));
 
 // ─── Schema defaults ────────────────────────────────────────────────────────────
 
-db.defaults({ menus: [], templates: [], _seq: 200 }).write();
+db.defaults({ menus: [], templates: [], users: [], _seq: 200 }).write();
+
+// ─── Seed default admin user ─────────────────────────────────────────────────
+if (!db.get('users').size().value()) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.get('users').push({ id: 1, username: 'admin', password: hash, role: 'Admin' }).write();
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || 'menuplan_secret_2024';
 
 // ─── Seed templates ─────────────────────────────────────────────────────────────
 
@@ -1617,6 +1627,69 @@ app.get('/api/ingredients', (req, res) => {
     ing_fiyat: i.ing_fiyat, wastepercent: i.wastepercent,
     allergens: ['gluten','kabuklu','yumurta','balik','fistik','soya','sut','sertkabuk','kereviz','hardal','susam','so2','bal','et'].filter(f => i[f]),
   })));
+});
+
+// ─── Auth & User Management ──────────────────────────────────────────────────
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const user = db.get('users').find({ username }).value();
+  if (!user || !bcrypt.compareSync(password, user.password))
+    return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
+  const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
+  res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+});
+
+function authMiddleware(req, res, next) {
+  const h = req.headers.authorization;
+  if (!h) return res.status(401).json({ error: 'Token gerekli' });
+  try {
+    req.user = jwt.verify(h.replace('Bearer ', ''), JWT_SECRET);
+    next();
+  } catch { res.status(401).json({ error: 'Geçersiz token' }); }
+}
+
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Yetki yok' });
+  next();
+}
+
+app.get('/api/users', authMiddleware, adminOnly, (req, res) => {
+  res.json(db.get('users').map(u => ({ id: u.id, username: u.username, role: u.role })).value());
+});
+
+app.post('/api/users', authMiddleware, adminOnly, (req, res) => {
+  const { username, password, role } = req.body;
+  if (!username || !password || !['Admin', 'Kullanıcı'].includes(role))
+    return res.status(400).json({ error: 'Geçersiz veri' });
+  if (db.get('users').find({ username }).value())
+    return res.status(400).json({ error: 'Bu kullanıcı adı zaten mevcut' });
+  const id = db.get('_seq').value() + 1;
+  db.set('_seq', id).write();
+  const hash = bcrypt.hashSync(password, 10);
+  db.get('users').push({ id, username, password: hash, role }).write();
+  res.json({ id, username, role });
+});
+
+app.put('/api/users/:id', authMiddleware, adminOnly, (req, res) => {
+  const id = Number(req.params.id);
+  const { username, password, role } = req.body;
+  const user = db.get('users').find({ id }).value();
+  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  const update = {};
+  if (username) update.username = username;
+  if (role && ['Admin', 'Kullanıcı'].includes(role)) update.role = role;
+  if (password) update.password = bcrypt.hashSync(password, 10);
+  db.get('users').find({ id }).assign(update).write();
+  const u = db.get('users').find({ id }).value();
+  res.json({ id: u.id, username: u.username, role: u.role });
+});
+
+app.delete('/api/users/:id', authMiddleware, adminOnly, (req, res) => {
+  const id = Number(req.params.id);
+  if (id === req.user.id) return res.status(400).json({ error: 'Kendinizi silemezsiniz' });
+  db.get('users').remove({ id }).write();
+  res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3001;
