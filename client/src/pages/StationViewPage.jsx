@@ -295,8 +295,12 @@ function RecipeMatchIcon({ dishKey, matches, activePanel, setActivePanel }) {
     byType[m.matchType].push(m)
   }
 
-  // Tam ad eşleşmesi (name_exact) varsa, ad benzerliğini (name_partial) gösterme
+  // Tam ad eşleşmesi varsa ad benzerliğini, herhangi bir ad eşleşmesi varsa malzeme eşleşmelerini gizle
   if (byType['name_exact']) delete byType['name_partial']
+  if (byType['name_exact'] || byType['name_partial']) {
+    delete byType['ingredient_exact']
+    delete byType['ingredient_partial']
+  }
 
   const handleClick = (e, type, recipes) => {
     e.nativeEvent.stopImmediatePropagation()
