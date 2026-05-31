@@ -1358,6 +1358,15 @@ function normTR(s) {
   return s.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
 }
 
+// Türkçe → ASCII normalize (ğ→g, ş→s, ü→u, ö→o, ç→c, ı→i, İ→i)
+function normASCII(s) {
+  if (!s) return '';
+  return s.toLocaleLowerCase('tr')
+    .replace(/ğ/g, 'g').replace(/ş/g, 's').replace(/ü/g, 'u')
+    .replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/ı/g, 'i').replace(/î/g, 'i')
+    .replace(/\s+/g, ' ').trim();
+}
+
 // Eşleştirme index'leri (startup'ta bir kez oluşturulur)
 // 1. Recipe adı index: normAdi → { y_no, adi }
 const recipeNameIndex = {};
@@ -1366,22 +1375,31 @@ for (const p of recipeProducts) {
 }
 const recipeNameEntries = Object.entries(recipeNameIndex);
 
-// 2. Malzeme adı index: normIngName → Set of y_no
-const ingRecipeIndex = {}; // normIngName → [{ y_no, adi }]
+// 2. Malzeme adı index: hem TR hem ASCII anahtarıyla (DB'de ASCII, menüde Türkçe karakter olabilir)
+const ingRecipeIndex = {}; // normKey → [{ y_no, adi }]
+const prodMap = {};
+for (const p of recipeProducts) prodMap[p.y_no] = p;
+
+function addToIngIndex(key, prod) {
+  if (!key || !prod) return;
+  if (!ingRecipeIndex[key]) ingRecipeIndex[key] = [];
+  if (!ingRecipeIndex[key].some(x => x.y_no === prod.y_no))
+    ingRecipeIndex[key].push({ y_no: prod.y_no, adi: prod.adi });
+}
+
 for (const row of recipeIngredients) {
   if (!row.ingredient || !row.product_no) continue;
-  const key = normTR(row.ingredient);
-  if (!ingRecipeIndex[key]) ingRecipeIndex[key] = [];
-  const prod = recipeProducts.find(p => p.y_no === row.product_no);
-  if (prod && !ingRecipeIndex[key].some(x => x.y_no === prod.y_no)) {
-    ingRecipeIndex[key].push({ y_no: prod.y_no, adi: prod.adi });
-  }
+  const prod = prodMap[row.product_no];
+  if (!prod) continue;
+  addToIngIndex(normTR(row.ingredient),    prod); // orijinal (Türkçe)
+  addToIngIndex(normASCII(row.ingredient), prod); // ASCII (ğ→g vb.)
 }
 const ingIndexEntries = Object.entries(ingRecipeIndex);
 
 // Eşleştirme fonksiyonu
 function matchDishToRecipes(dishName) {
-  const n = normTR(dishName);
+  const n  = normTR(dishName);
+  const na = normASCII(dishName); // ASCII versiyonu (ğ→g vb.)
   if (n.length < 3) return [];
   const matches = []; // { y_no, adi, matchType }
   const seen = new Set();
@@ -1390,29 +1408,58 @@ function matchDishToRecipes(dishName) {
   };
 
   // 1. Tam reçete adı eşleşmesi
-  if (recipeNameIndex[n]) add(recipeNameIndex[n], 'name_exact');
+  if (recipeNameIndex[n])  add(recipeNameIndex[n],  'name_exact');
+  if (recipeNameIndex[na]) add(recipeNameIndex[na], 'name_exact');
 
   // 2. Kısmi reçete adı eşleşmesi (min 5 karakter)
   if (n.length >= 5) {
     for (const [rn, info] of recipeNameEntries) {
-      if (rn === n) continue;
-      if (rn.includes(n) || (n.length >= 6 && n.includes(rn) && rn.length >= 5)) {
+      if (rn === n || rn === na) continue;
+      if (rn.includes(n) || rn.includes(na) ||
+          (n.length >= 6 && n.includes(rn) && rn.length >= 5) ||
+          (na.length >= 6 && na.includes(rn) && rn.length >= 5)) {
         add(info, 'name_partial');
       }
       if (matches.length >= 10) break;
     }
   }
 
-  // 3. Tam malzeme adı eşleşmesi
-  if (ingRecipeIndex[n]) {
-    for (const info of ingRecipeIndex[n]) add(info, 'ingredient_exact');
+  // 3. Tam malzeme adı eşleşmesi (TR ve ASCII)
+  for (const key of [n, na]) {
+    if (ingRecipeIndex[key])
+      for (const info of ingRecipeIndex[key]) add(info, 'ingredient_exact');
   }
 
-  // 4. Kısmi malzeme adı eşleşmesi (min 4 karakter)
+  // 4. Kısmi malzeme adı eşleşmesi (min 4 karakter, substring)
   if (n.length >= 4 && matches.length < 10) {
     for (const [ingName, infos] of ingIndexEntries) {
-      if (ingName === n) continue;
-      if (ingName.includes(n) || (n.length >= 5 && n.includes(ingName) && ingName.length >= 4)) {
+      if (ingName === n || ingName === na) continue;
+      const hit =
+        ingName.includes(n) || ingName.includes(na) ||
+        (n.length  >= 5 && n.includes(ingName)  && ingName.length >= 4) ||
+        (na.length >= 5 && na.includes(ingName) && ingName.length >= 4);
+      if (hit) {
+        for (const info of infos) add(info, 'ingredient_partial');
+      }
+      if (matches.length >= 10) break;
+    }
+  }
+
+  // 5. Kelime bazlı malzeme eşleşmesi:
+  //    Yemek adındaki anlamlı kelimeler (≥4 harf) malzeme adında geçiyor mu?
+  //    Örn: "soğan halkası" → "sogan" → "sogan kuru/onion" eşleşir
+  //    Örn: "levrek bütün"  → "levrek" → "levrek baligi 3-4 kg" eşleşir
+  const STOP_WORDS = new Set(['taze','bütün','dilim','rende','haşlama','izgara','kizartma',
+    'kızartma','sote','fırın','tatlı','büyük','küçük','orta','mix','çeşit','zeytinyağlı',
+    'halkası','halka','rosto','haşlanmış','pişmiş','dolu']);
+  const dishWords = na.split(' ').filter(w => w.length >= 4 && !STOP_WORDS.has(normASCII(w)));
+  if (dishWords.length > 0 && matches.length < 10) {
+    for (const [ingName, infos] of ingIndexEntries) {
+      if (ingName === n || ingName === na) continue;
+      const ingWords = ingName.split(/[\s\/\-,]+/);
+      // En az 5 karakter ve kelime tam baştan eşleşmeli (kısa kelime karışıklığı önler)
+      const hit = dishWords.some(dw => dw.length >= 5 && ingWords.some(iw => iw.startsWith(dw) || dw.startsWith(iw) && iw.length >= 5));
+      if (hit) {
         for (const info of infos) add(info, 'ingredient_partial');
       }
       if (matches.length >= 10) break;
