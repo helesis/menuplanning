@@ -1668,7 +1668,7 @@ app.post('/api/ai-recipe', async (req, res) => {
   if (!dish_name) return res.status(400).json({ error: 'dish_name gerekli' });
 
   try {
-    const msg = await new Anthropic().messages.create({
+    const msg = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{
