@@ -1447,19 +1447,56 @@ for (const row of recipeIngredients) {
   ingredientsByProduct[row.product_no].push(row);
 }
 
+// Birim dönüşüm katsayısı: reçete birimi → DB birim fiyatı (TL/kg veya TL/L)
+// DB'deki fiyatlar Kilogram veya Litre bazında
+function unitToKgFactor(birim) {
+  if (!birim) return null;
+  const b = birim.trim().toLowerCase();
+  // Ağırlık → kg
+  if (b === 'kg' || b === 'kilogram')  return 1;
+  if (b === 'g'  || b === 'gr' || b === 'gram') return 0.001;
+  if (b === 'mg') return 0.000001;
+  // Hacim → litre
+  if (b === 'l'  || b === 'lt' || b === 'litre' || b === 'liter') return 1;
+  if (b === 'cl') return 0.01;
+  if (b === 'ml') return 0.001;
+  // Adet — dönüşüm yapılamaz
+  return null;
+}
+
 // Reçete maliyeti hesapla (canlı DB fiyatı öncelikli, yoksa statik)
 function calcRecipeCost(y_no) {
   const rows = ingredientsByProduct[y_no] || [];
   let total = 0;
   const detail = rows.map(row => {
     const ingKey = row.ingredient ? row.ingredient.trim().toUpperCase() : '';
+    const factor = unitToKgFactor(row.birim); // null = adet/belirsiz
+
     // Önce canlı fiyat, sonra statik inglist fiyatı
     const livePrice = livePriceMap[ingKey];
     const ing = ingMap[ingKey];
+    // Statik fiyat inglist'te de g/cl bazında saklanmış olabilir — onu olduğu gibi kullan
     const staticPrice = ing ? ing.ing_fiyat : 0;
-    const fiyat = (livePrice != null && livePrice > 0) ? livePrice : staticPrice;
-    const source = (livePrice != null && livePrice > 0) ? 'live' : 'static';
-    const maliyet = fiyat * (row.miktar || 0);
+
+    let fiyat, source, maliyet;
+
+    if (livePrice != null && livePrice > 0 && factor != null) {
+      // Canlı fiyat TL/kg → miktar(g)*0.001 * fiyat(TL/kg)
+      fiyat  = livePrice * factor;   // birim başına TL (g, cl, ml…)
+      source = 'live';
+      maliyet = fiyat * (row.miktar || 0);
+    } else if (livePrice != null && livePrice > 0 && factor == null) {
+      // Birim adet/bilinmiyor, canlı fiyat direkt kullan
+      fiyat  = livePrice;
+      source = 'live';
+      maliyet = fiyat * (row.miktar || 0);
+    } else {
+      // Statik fiyat (inglist'te zaten reçete birimiyle eşleşiyor)
+      fiyat  = staticPrice;
+      source = 'static';
+      maliyet = fiyat * (row.miktar || 0);
+    }
+
     total += maliyet;
     return { ingredient: row.ingredient, miktar: row.miktar, birim: row.birim, fiyat, maliyet, source };
   });
