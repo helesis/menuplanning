@@ -1626,6 +1626,98 @@ function calcRecipeCost(y_no) {
   };
 }
 
+// ─── AI Ingredient Search ────────────────────────────────────────────────────
+
+// Malzeme adını ingredient listesinde bul (akıllı eşleşme)
+function findIngredientByName(aiName) {
+  if (!aiName) return null;
+  const n  = normTR(aiName);
+  const na = normASCII(aiName);
+
+  // 1. Tam Türkçe eşleşme
+  let m = recipeInglist.find(i => normTR(i.ing_name) === n);
+  if (m) return m;
+
+  // 2. Tam ASCII eşleşme
+  m = recipeInglist.find(i => normASCII(i.ing_name) === na);
+  if (m) return m;
+
+  // 3. ing_name, aranan adı içeriyor (örn. "GLUTENSIZ UN" → "GLUTENSIZ MISIR UNU" dahil)
+  const contains = recipeInglist.filter(i => normASCII(i.ing_name).includes(na) && na.length >= 4);
+  if (contains.length > 0) return contains[0];
+
+  // 4. Arama adının kelimeleri ing_name içinde (en uzun eşleşen)
+  const words = na.split(' ').filter(w => w.length >= 4);
+  if (words.length > 0) {
+    const scored = recipeInglist
+      .map(i => {
+        const ingN = normASCII(i.ing_name);
+        const hits = words.filter(w => ingN.includes(w)).length;
+        return { i, hits };
+      })
+      .filter(x => x.hits > 0)
+      .sort((a, b) => b.hits - a.hits);
+    if (scored.length > 0) return scored[0].i;
+  }
+
+  return null;
+}
+
+app.post('/api/ai-recipe', async (req, res) => {
+  const { dish_name } = req.body;
+  if (!dish_name) return res.status(400).json({ error: 'dish_name gerekli' });
+
+  try {
+    const msg = await new Anthropic().messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `Sen bir profesyonel aşçısın. "${dish_name}" yemeği için bir otel/restoran reçetesi oluştur.
+
+ÖNEMLİ KURALLAR:
+- Yemek adındaki özelliklere dikkat et: "glutensiz" varsa SADECE glutensiz malzeme kullan (örn. glutensiz un, glutensiz nişasta), "vegan" varsa hayvansal ürün yok, "kremalı" varsa krema ekle vb.
+- Gerçekçi miktarlar ver (1 porsiyon için değil, ~10 kişilik)
+- Sadece JSON döndür, başka açıklama yapma
+
+Format:
+{
+  "ingredients": [
+    { "name": "malzeme adı (Türkçe, büyük harf)", "miktar": 500, "birim": "g" },
+    { "name": "SU", "miktar": 2, "birim": "lt" }
+  ]
+}`
+      }],
+    });
+
+    let ingredients = [];
+    try {
+      const text = msg.content[0].text.trim();
+      const json = JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, ''));
+      ingredients = json.ingredients || [];
+    } catch(e) {
+      return res.status(500).json({ error: 'AI yanıtı parse edilemedi' });
+    }
+
+    // Her malzemeyi ingredient tablosundan eşleştir
+    const matched = ingredients.map(ing => {
+      const found = findIngredientByName(ing.name);
+      return {
+        ing_no:   found?.ing_no   || null,
+        ing_name: found?.ing_name || ing.name,
+        miktar:   Number(ing.miktar) || 0,
+        birim:    ing.birim || found?.ing_birim || 'g',
+        matched:  !!found,
+      };
+    });
+
+    res.json({ ingredients: matched });
+  } catch(err) {
+    console.error('AI recipe error:', err.message);
+    res.status(500).json({ error: 'AI hatası: ' + err.message });
+  }
+});
+
 // GET /api/recipes — liste (arama + sayfalama)
 app.get('/api/recipes', (req, res) => {
   const q     = (req.query.q || '').toUpperCase();

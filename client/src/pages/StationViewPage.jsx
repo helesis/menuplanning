@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Utensils, Leaf, Sprout, Flame, Snowflake, Cake, Trash2,
   BookOpen, X, TrendingUp, PlusCircle, Pencil, Check, Star,
-  Search, Plus, Minus,
+  Search, Plus, Minus, Sparkles,
 } from 'lucide-react'
 import * as api from '../api.js'
 
@@ -610,6 +610,7 @@ function RecipePanel({ panel, onClose, onSaved }) {
         {/* EDIT / CREATE MODE */}
         {isEditMode && (
           <div style={{ paddingTop: 12 }}>
+            <AiGenerateButton dishName={dishName} onGenerated={setEditIngredients} />
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
               Malzemeleri ekleyip miktarlarını belirtin. Kaydedince özel reçete olarak saklanır.
             </div>
@@ -967,6 +968,61 @@ function IngredientAddRow({ onAdd }) {
           <Plus size={13} /> Ekle
         </button>
       </div>
+    </div>
+  )
+}
+
+function AiGenerateButton({ dishName, onGenerated }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
+
+  async function handleGenerate() {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/ai-recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dish_name: dishName }),
+      }).then(r => r.json())
+
+      if (res.error) { setError(res.error); return }
+      onGenerated(res.ingredients || [])
+    } catch {
+      setError('Sunucuya bağlanılamadı')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button
+        onClick={handleGenerate}
+        disabled={loading}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          width: '100%', padding: '10px 14px',
+          background: loading ? 'var(--bg)' : 'linear-gradient(135deg, #8a6c2e 0%, #c4a45a 100%)',
+          color: loading ? 'var(--text-dim)' : '#fff',
+          border: loading ? '1px solid var(--border)' : 'none',
+          borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer',
+          fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+          transition: 'all .15s',
+        }}
+      >
+        <Sparkles size={15} />
+        {loading ? 'AI reçete oluşturuyor…' : 'AI ile Otomatik Oluştur'}
+        {loading && <div className="spinner" style={{ marginLeft: 'auto', width: 14, height: 14 }} />}
+      </button>
+      {error && (
+        <div style={{
+          marginTop: 6, padding: '6px 10px', borderRadius: 6,
+          background: 'var(--red-bg)', color: 'var(--red)', fontSize: 12,
+        }}>
+          {error}
+        </div>
+      )}
     </div>
   )
 }
