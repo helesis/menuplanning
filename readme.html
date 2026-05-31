@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Menü Planlama — Rehber</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; color: #1d1d1f; line-height: 1.6; }
+    .container { max-width: 860px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+    h2 { font-size: 18px; font-weight: 700; margin: 36px 0 14px; border-bottom: 2px solid #e5e5e7; padding-bottom: 8px; }
+    h3 { font-size: 14px; font-weight: 700; margin: 20px 0 8px; color: #555; text-transform: uppercase; letter-spacing: .05em; }
+    p  { font-size: 14px; color: #444; margin-bottom: 10px; }
+    .subtitle { color: #888; font-size: 15px; margin-bottom: 40px; }
+
+    .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 8px; }
+    .cat-card  {
+      background: #fff; border: 1px solid #e5e5e7; border-radius: 12px;
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .cat-name  { font-weight: 700; font-size: 14px; }
+    .cat-desc  { font-size: 12px; color: #888; }
+    .cat-id    { font-size: 11px; color: #bbb; font-family: monospace; }
+
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+    .tag-red    { background: #fff0f0; color: #c0392b; }
+    .tag-orange { background: #fff8f0; color: #d35400; }
+    .tag-yellow { background: #fffbf0; color: #b7950b; }
+    .tag-green  { background: #f0fff4; color: #1e8449; }
+    .tag-blue   { background: #f0f4ff; color: #1a5276; }
+    .tag-purple { background: #f5f0ff; color: #6c3483; }
+    .tag-gray   { background: #f5f5f7; color: #888; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e5e7; }
+    th { background: #f5f5f7; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #888; }
+    code { background: #f5f5f7; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🍽 Menü Planlama Sistemi</h1>
+  <p class="subtitle">Uygulama rehberi ve kategori tanımları</p>
+
+  <!-- YEMEk KATEGORİLERİ -->
+  <h2>Yemek Kategorileri</h2>
+  <p>Her yemek aşağıdaki 13 kategoriden birine atanır. Kategori, yemeğin türünü (protein kaynağı, pişirme yöntemi değil) tanımlar.</p>
+
+  <div class="cat-grid">
+
+    <div class="cat-card">
+      <div class="cat-name">🍲 Çorba</div>
+      <div class="cat-desc">Tüm çorba çeşitleri. Sıcak veya soğuk olabilir.</div>
+      <div class="cat-id">id: soup</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🥗 Soğuk Başlangıç</div>
+      <div class="cat-desc">Soğuk büfede sunulan meze, söğüş, işlenmemiş sebze tabakları.</div>
+      <div class="cat-id">id: cold_starter</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🥣 Soğuk Yemek</div>
+      <div class="cat-desc">Zeytinyağlılar, soğuk servis edilen pişmiş yemekler (kısır, tabuleh vb.).</div>
+      <div class="cat-id">id: cold_dish</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🥟 Sıcak Başlangıç</div>
+      <div class="cat-desc">Börek, sigara böreği, kızarmış ara sıcaklar, mini porsiyonlar.</div>
+      <div class="cat-id">id: hot_starter</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🍝 Makarna / Pilav</div>
+      <div class="cat-desc">Her türlü makarna, pilav, bulgur, risotto, polenta.</div>
+      <div class="cat-id">id: pasta_rice</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🥩 Kırmızı Et</div>
+      <div class="cat-desc">Dana, kuzu, koyun, av eti içeren yemekler. Pişirme yöntemi fark etmez (ızgara, güveç, haşlama vb.).</div>
+      <div class="cat-id">id: red_meat</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🍗 Beyaz Et</div>
+      <div class="cat-desc">Tavuk, hindi, piliç içeren yemekler.</div>
+      <div class="cat-id">id: white_meat</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🫀 Sakatat</div>
+      <div class="cat-desc">Ciğer, böbrek, işkembe, yürek, beyaz sakatat vb.</div>
+      <div class="cat-id">id: offal</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🐟 Balık</div>
+      <div class="cat-desc">Çipura, levrek, somon, hamsi, palamut, alabalık ve diğer balık türleri. Füme balık dahil.</div>
+      <div class="cat-id">id: fish</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🦐 Deniz Mahsulleri</div>
+      <div class="cat-desc">Kalamar, karides, midye, ahtapot, ıstakoz, yengeç ve diğer kabuklu/yumuşakçalar.</div>
+      <div class="cat-id">id: seafood</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🥦 Sebze / Vejetaryen</div>
+      <div class="cat-desc">Et içermeyen sıcak sebze yemekleri. Türlü, güveç, sote, fırın sebze vb.</div>
+      <div class="cat-id">id: vegetable</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">🍮 Tatlı</div>
+      <div class="cat-desc">Her türlü tatlı, pasta, dondurma, meyve tabakları.</div>
+      <div class="cat-id">id: dessert</div>
+    </div>
+
+    <div class="cat-card">
+      <div class="cat-name">📦 Diğer</div>
+      <div class="cat-desc">Yukarıdaki kategorilere girmeyen yemekler. Ekmek, sos, garnitür vb.</div>
+      <div class="cat-id">id: other</div>
+    </div>
+
+  </div>
+
+  <!-- BÖLÜMLER -->
+  <h2>İstasyon Bölümleri</h2>
+  <p>Her istasyon üç bölümden birine atanır. Bu, İstasyon Görünümü'nde gruplamayı ve içe aktarmada doğru eşleşmeyi sağlar.</p>
+
+  <table>
+    <thead>
+      <tr><th>Bölüm</th><th>Açıklama</th><th>Tipik İstasyonlar</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="tag tag-orange">🔥 Sıcak</span> <code>hot</code></td>
+        <td>Sıcak sunulan tüm ana yemek istasyonları</td>
+        <td>Çorbalar, Ara Sıcak, Güveç, WOK, Izgara, Makarna Show, Et & Tavuk</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-blue">❄️ Soğuk</span> <code>cold</code></td>
+        <td>Soğuk büfe ve soğuk sunum istasyonları</td>
+        <td>Soğuk Ayna, Peynir, Balık Füme, Meze, Zeytinyağlılar, Salata Barı, Turşu, Sushi</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-purple">🍮 Tatlı</span> <code>dessert</code></td>
+        <td>Tatlı büfesi</td>
+        <td>Tatlılar Köşesi, Pastane, Dondurma Show</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- İÇE AKTARMA -->
+  <h2>İçe Aktarma Rehberi</h2>
+  <p>Excel'den veya panodan yapıştırma ile menü yüklenebilir. Parser aşağıdaki formatı tanır:</p>
+
+  <h3>Beklenen Format</h3>
+  <table>
+    <thead><tr><th>Satır</th><th>İçerik</th><th>Örnek</th></tr></thead>
+    <tbody>
+      <tr><td>1. satır</td><td>Bölüm başlığı (opsiyonel)</td><td><code>SOĞUK BÖLÜMÜ MENÜSÜ</code></td></tr>
+      <tr><td>2. satır</td><td>Gün & öğün bilgisi</td><td><code>ÖĞLEN – 1. GÜN PAZARTESİ 2026</code></td></tr>
+      <tr><td>3+ satır</td><td>İstasyon başlığı (büyük harf, anahtar kelime içermeli)</td><td><code>SOĞUK AYNA ÇEŞİTLERİ</code></td></tr>
+      <tr><td>Sonraki satırlar</td><td>Yemek adları</td><td><code>Domates salatası</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Otomatik Algılama</h3>
+  <p>
+    <span class="tag tag-green">Gün</span> Pazartesi, Salı … Pazar (Türkçe büyük harf)<br/>
+    <span class="tag tag-blue">Öğün</span> ÖĞLEN / ÖĞLE → öğle &nbsp;|&nbsp; AKŞAM → akşam<br/>
+    <span class="tag tag-orange">Bölüm</span> SOĞUK → ❄️ &nbsp;|&nbsp; SICAK → 🔥 &nbsp;|&nbsp; TATLI → 🍮
+  </p>
+</div>
+</body>
+</html>
