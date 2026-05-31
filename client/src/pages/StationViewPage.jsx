@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Utensils, Leaf, Sprout, Flame, Snowflake, Cake, Trash2,
-  BookOpen, X, TrendingUp, PlusCircle, Pencil, Check, Star,
+  X, TrendingUp, PlusCircle, Pencil, Check, Star,
   Search, Plus, Minus,
 } from 'lucide-react'
 import * as api from '../api.js'
@@ -176,8 +176,9 @@ export default function StationViewPage() {
                       <div style={{ color: 'var(--text-xdim)', fontSize: 12, padding: '8px 0' }}>Yemek yok</div>
                     )}
                     {station.dishes.map(dish => {
-                      const matches = recipeMatches[dish.name] || []
-                      const hasMatch = matches.length > 0
+                      const matches   = recipeMatches[dish.name] || []
+                      const hasCustom = matches.some(m => m.matchType === 'custom')
+                      const customMatch = matches.find(m => m.matchType === 'custom')
                       return (
                         <div key={dish.id} className="station-view-dish">
                           <span className="station-view-dish-name">
@@ -191,14 +192,30 @@ export default function StationViewPage() {
                               ? <span className="badge badge-blue" style={{ fontSize: 10 }}><Leaf size={9} /> Vej.</span>
                               : null}
 
-                            {hasMatch ? (
-                              <RecipeMatchIcon
-                                dishKey={dish.id}
-                                dishName={dish.name}
-                                matches={matches}
-                                activePanel={activePanel}
-                                setActivePanel={setActivePanel}
-                              />
+                            {hasCustom ? (
+                              <span
+                                className="rm-chip"
+                                title="Özel Reçete"
+                                onClick={e => {
+                                  e.nativeEvent.stopImmediatePropagation()
+                                  const panelKey = `custom_${dish.id}`
+                                  setActivePanel(prev =>
+                                    prev?.key === panelKey ? null : {
+                                      key: panelKey,
+                                      dishName: dish.name,
+                                      type: 'custom',
+                                      recipes: [customMatch],
+                                      mode: 'view',
+                                    }
+                                  )
+                                }}
+                                style={{
+                                  cursor: 'pointer', padding: '1px 2px', borderRadius: 3,
+                                  background: activePanel?.key === `custom_${dish.id}` ? '#8a6c2e22' : 'transparent',
+                                }}
+                              >
+                                <Star size={12} style={{ color: '#8a6c2e' }} />
+                              </span>
                             ) : (
                               <span
                                 className="rm-chip"
@@ -317,61 +334,6 @@ export default function StationViewPage() {
   )
 }
 
-function RecipeMatchIcon({ dishKey, dishName, matches, activePanel, setActivePanel }) {
-  if (!matches || matches.length === 0) return null
-
-  const byType = {}
-  for (const m of matches) {
-    if (!byType[m.matchType]) byType[m.matchType] = []
-    byType[m.matchType].push(m)
-  }
-
-  // Gizleme kuralları
-  if (byType['name_exact']) delete byType['name_partial']
-  if (byType['name_exact'] || byType['name_partial']) {
-    delete byType['ingredient_exact']
-    delete byType['ingredient_partial']
-  }
-
-  const handleClick = (e, type, recipes) => {
-    e.nativeEvent.stopImmediatePropagation()
-    const panelKey = `${dishKey}_${type}`
-    setActivePanel(prev =>
-      prev?.key === panelKey ? null : {
-        key: panelKey,
-        dishName,
-        type,
-        recipes,
-        mode: type === 'custom' ? 'view' : 'view',
-      }
-    )
-  }
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      {MATCH_TYPES.filter(t => byType[t.key]).map(t => {
-        const panelKey = `${dishKey}_${t.key}`
-        const isOpen   = activePanel?.key === panelKey
-        const Icon     = t.key === 'custom' ? Star : BookOpen
-        return (
-          <span
-            key={t.key}
-            className="rm-chip"
-            title={t.label}
-            onClick={e => handleClick(e, t.key, byType[t.key])}
-            style={{
-              cursor: 'pointer',
-              background: isOpen ? t.color + '22' : 'transparent',
-              borderRadius: 3, padding: '1px 2px',
-            }}
-          >
-            <Icon size={12} style={{ color: t.color }} />
-          </span>
-        )
-      })}
-    </span>
-  )
-}
 
 // ─── Reçete Paneli ────────────────────────────────────────────────────────────
 
