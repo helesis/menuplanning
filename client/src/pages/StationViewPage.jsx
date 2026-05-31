@@ -411,10 +411,24 @@ function RecipePanel({ type, recipes, onClose }) {
                 background: 'var(--gold-bg)', border: '1px solid var(--gold-border)',
               }}>
                 <TrendingUp size={16} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                <div>
-                  <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--gold)' }}>{detail.total.toFixed(2)}</span>
-                  <span style={{ fontSize: 12, color: 'var(--gold)', marginLeft: 4 }}>TL</span>
-                  <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{detail.detail?.length} malzeme</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>{detail.total.toFixed(2)}</span>
+                      <span style={{ fontSize: 11, color: 'var(--gold)', marginLeft: 3 }}>TL toplam</span>
+                    </div>
+                    {detail.per100g != null && (
+                      <div>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>{detail.per100g.toFixed(2)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--gold)', marginLeft: 3 }}>TL / 100g</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
+                    {detail.detail?.length} malzeme
+                    {detail.totalGrams > 0 && ` · ${detail.totalGrams}g`}
+                    {(() => { const lc = (detail.detail||[]).filter(r=>r.source==='live').length; return lc > 0 ? <span style={{color:'#16a34a', marginLeft:6}}>● {lc} canlı</span> : null })()}
+                  </div>
                 </div>
               </div>
             )}
@@ -432,7 +446,10 @@ function RecipePanel({ type, recipes, onClose }) {
                 <tbody>
                   {detail.detail.map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '5px 0', color: 'var(--text)' }}>{row.ingredient}</td>
+                      <td style={{ padding: '5px 0', color: row.source === 'live' ? '#16a34a' : 'var(--text)', fontWeight: row.source === 'live' ? 500 : 400 }}>
+                        {row.ingredient}
+                        {row.source === 'live' && <span style={{ marginLeft: 4, fontSize: 9, opacity: .7 }}>●</span>}
+                      </td>
                       <td style={{ padding: '5px 0', textAlign: 'right', color: 'var(--text-dim)' }}>{row.miktar} {row.birim}</td>
                       <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: row.maliyet > 0 ? 600 : 400, color: row.maliyet > 0 ? 'var(--text)' : 'var(--text-xdim)' }}>
                         {row.maliyet > 0 ? `${row.maliyet.toFixed(2)} TL` : '—'}
