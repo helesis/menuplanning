@@ -24,7 +24,7 @@ const MATCH_TYPES = [
   { key: 'ingredient_partial',color:'#a78bfa', label: 'Malzeme Benzerliği' },
 ]
 
-export default function StationViewPage() {
+export default function StationViewPage({ isAdmin = false }) {
   const [menus, setMenus]               = useState([])
   const [selectedDay, setSelectedDay]   = useState(1)
   const [selectedMeal, setSelectedMeal] = useState('lunch')
@@ -332,6 +332,7 @@ export default function StationViewPage() {
           panel={activePanel}
           onClose={() => setActivePanel(null)}
           onSaved={onRecipeSaved}
+          isAdmin={isAdmin}
         />
       )}
     </>
@@ -341,7 +342,7 @@ export default function StationViewPage() {
 
 // ─── Reçete Paneli ────────────────────────────────────────────────────────────
 
-function RecipePanel({ panel, onClose, onSaved }) {
+function RecipePanel({ panel, onClose, onSaved, isAdmin = false }) {
   const { dishName, type, recipes } = panel
   const typeInfo = MATCH_TYPES.find(t => t.key === type) || MATCH_TYPES[0]
 
@@ -636,7 +637,7 @@ function RecipePanel({ panel, onClose, onSaved }) {
         {/* EDIT / CREATE MODE */}
         {isEditMode && (
           <div style={{ paddingTop: 20 }}>
-            <AiGenerateButton dishName={dishName} onGenerated={setEditIngredients} />
+            {isAdmin && <AiGenerateButton dishName={dishName} onGenerated={setEditIngredients} />}
             <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14, marginTop: 4 }}>
               Malzemeleri ekleyip miktarlarını belirtin. Kaydedince özel reçete olarak saklanır.
             </div>

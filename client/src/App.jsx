@@ -136,8 +136,8 @@ export default function App() {
         {page === 'weekly' && (
           <WeeklyPage menus={menus} templates={templates} onRefresh={loadMenus} toast={toast} />
         )}
-        {page === 'stations' && <StationViewPage />}
-        {page === 'categorize' && <CategorizePage toast={toast} />}
+        {page === 'stations' && <StationViewPage isAdmin={currentUser.role === 'Admin'} />}
+        {page === 'categorize' && <CategorizePage toast={toast} isAdmin={currentUser.role === 'Admin'} />}
         {page === 'balance'    && <BalancePage />}
         {page === 'stats' && <StatsPage />}
         {page === 'import' && <ImportPage onRefresh={loadMenus} toast={toast} />}

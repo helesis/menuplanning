@@ -23,7 +23,7 @@ const COURSE_COLORS = {
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 const MEAL = { lunch: 'Öğle', dinner: 'Akşam' }
 
-export default function CategorizePage({ toast }) {
+export default function CategorizePage({ toast, isAdmin = false }) {
   const [courses, setCourses] = useState([])
   const [dishes, setDishes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -152,7 +152,7 @@ export default function CategorizePage({ toast }) {
             <button className="btn btn-danger btn-sm" onClick={stopAll}>
               Durdur
             </button>
-          ) : (
+          ) : isAdmin ? (
             <>
               <button className="btn btn-primary" onClick={categorizeAll} disabled={uncategorizedCount === 0}>
                 <Sparkles size={14} /> Kategorisizleri Kategorile ({uncategorizedCount})
@@ -168,7 +168,7 @@ export default function CategorizePage({ toast }) {
               <button className="btn btn-ghost btn-sm" onClick={resetAndCategorize}>
                 <RefreshCw size={14} /> Sıfırla ve Yeniden Kategorile
               </button>
-            </>
+            </>) : null
           )}
         </div>
       </div>
@@ -235,7 +235,7 @@ export default function CategorizePage({ toast }) {
                         />
                       </td>
                       <td>
-                        {dish._loading
+                        {isAdmin && (dish._loading
                           ? <Loader2 size={14} style={{ color: 'var(--text-xdim)', animation: 'spin .7s linear infinite' }} />
                           : (
                             <button
@@ -246,7 +246,7 @@ export default function CategorizePage({ toast }) {
                               <Sparkles size={13} />
                             </button>
                           )
-                        }
+                        )}
                       </td>
                     </tr>
                   ))}
