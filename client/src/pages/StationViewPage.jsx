@@ -32,6 +32,8 @@ export default function StationViewPage({ isAdmin = false }) {
   const [loading, setLoading]           = useState(false)
   const [recipeMatches, setRecipeMatches] = useState({})
   const [activePanel, setActivePanel]   = useState(null)
+  const [addingDish, setAddingDish]     = useState(null) // { stationId }
+  const [newDishName, setNewDishName]   = useState('')
 
   // Dışarı tıklayınca paneli kapat
   useEffect(() => {
@@ -79,6 +81,26 @@ export default function StationViewPage({ isAdmin = false }) {
     const updated = await api.getMenu(menu.id)
     setMenu(updated)
   }
+
+  const refreshMenu = useCallback(async () => {
+    if (!menu) return
+    const updated = await api.getMenu(menu.id)
+    setMenu(updated)
+    loadMatches(updated)
+  }, [menu, loadMatches])
+
+  const handleDeleteDish = useCallback(async (dishId) => {
+    await api.deleteDish(dishId)
+    refreshMenu()
+  }, [refreshMenu])
+
+  const handleAddDish = useCallback(async (stationId) => {
+    if (!newDishName.trim()) return
+    await api.addDish(stationId, { name: newDishName.trim() })
+    setNewDishName('')
+    setAddingDish(null)
+    refreshMenu()
+  }, [newDishName, refreshMenu])
 
   const onRecipeSaved = useCallback((dishName) => {
     // Reçete kaydedilince eşleşmeleri yenile
@@ -168,8 +190,15 @@ export default function StationViewPage({ isAdmin = false }) {
             <div className="station-view-grid">
               {sec.stations.map(station => (
                 <div key={station.id} className="station-view-card">
-                  <div className="station-view-header" style={{ borderLeft: `3px solid ${sec.color}` }}>
-                    {station.name}
+                  <div className="station-view-header" style={{ borderLeft: `3px solid ${sec.color}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>{station.name}</span>
+                    <button
+                      onClick={() => { setAddingDish({ stationId: station.id }); setNewDishName('') }}
+                      title="Yemek ekle"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: sec.color, padding: '0 2px', display: 'flex', opacity: 0.7 }}
+                    >
+                      <Plus size={14} />
+                    </button>
                   </div>
                   <div className="station-view-body">
                     {station.dishes.length === 0 && (
@@ -242,10 +271,52 @@ export default function StationViewPage({ isAdmin = false }) {
                                 <PlusCircle size={13} style={{ color: 'var(--text-xdim)' }} />
                               </span>
                             )}
+
+                            <button
+                              onClick={() => handleDeleteDish(dish.id)}
+                              title="Yemeği çıkar"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px 2px', display: 'flex', color: 'var(--text-xdim)', opacity: 0, transition: 'opacity .15s' }}
+                              className="dish-delete-btn"
+                            >
+                              <X size={12} />
+                            </button>
                           </span>
                         </div>
                       )
                     })}
+
+                    {/* Inline yemek ekleme */}
+                    {addingDish?.stationId === station.id && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+                        <input
+                          autoFocus
+                          value={newDishName}
+                          onChange={e => setNewDishName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleAddDish(station.id)
+                            if (e.key === 'Escape') { setAddingDish(null); setNewDishName('') }
+                          }}
+                          placeholder="Yemek adı…"
+                          style={{
+                            flex: 1, fontSize: 12, padding: '5px 8px',
+                            border: '1px solid var(--gold-light)', borderRadius: 5,
+                            background: 'var(--surface)', color: 'var(--text)', outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={() => handleAddDish(station.id)}
+                          style={{ background: 'var(--gold)', color: '#fff', border: 'none', borderRadius: 5, padding: '5px 8px', cursor: 'pointer', display: 'flex' }}
+                        >
+                          <Check size={13} />
+                        </button>
+                        <button
+                          onClick={() => { setAddingDish(null); setNewDishName('') }}
+                          style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 8px', cursor: 'pointer', display: 'flex', color: 'var(--text-dim)' }}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -284,6 +355,7 @@ export default function StationViewPage({ isAdmin = false }) {
           border-bottom: 1px solid var(--border); font-size: 13px;
         }
         .station-view-dish:last-child { border-bottom: none; }
+        .station-view-dish:hover .dish-delete-btn { opacity: 1 !important; }
         .station-view-dish-name {
           display: flex; align-items: center; gap: 7px;
           flex: 1; color: var(--text); min-width: 0;
