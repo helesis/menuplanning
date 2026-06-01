@@ -889,11 +889,12 @@ app.get('/api/dishes/categorize-all', async (req, res) => {
   }
 
   // Kategorisiz tüm dish referanslarını topla (reset=1 ise hepsini dahil et)
+  const reset = req.query.reset === '1';
   const allUncategorized = [];
   for (const menu of db.get('menus').value()) {
     for (const station of menu.stations) {
       for (const dish of station.dishes) {
-        if (!dish.course) {
+        if (!dish.course || reset) {
           allUncategorized.push({ dish, stationName: station.name });
         }
       }
@@ -930,7 +931,7 @@ app.get('/api/dishes/categorize-all', async (req, res) => {
   for (const group of uniqueGroups) {
     try {
       const msg = await client.messages.create({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 20,
         messages: [{
           role: 'user',
@@ -941,6 +942,21 @@ Yemek: ${group.displayName}
 
 Kategoriler:
 ${courseList}
+
+İPUÇLARI (istasyon adına değil, yemek adına bak):
+- Çorba, corba, soup → soup
+- Dana, kuzu, köfte, bonfile, antrikot, kavurma, güveç (kırmızı et) → red_meat
+- Tavuk, hindi, piliç (beyaz et) → white_meat
+- Balık, levrek, çipura, somon, hamsi → fish
+- Karides, kalamar, midye, deniz mahsulleri → seafood
+- Makarna, pilav, risotto, noodle → pasta_rice
+- Soğuk meze, soğuk salata, zeytinyağlı → cold_starter
+- Sıcak meze, börek, gözleme → hot_starter
+- Tatlı, sütlaç, baklava, dondurma → dessert
+- Peynir çeşidi → cheese
+- Zeytin → olive
+- Sos, salata sosu, garnitür → sauce
+- Sebze, türlü, güveç (sebze ağırlıklı) → vegetable
 
 Kategori id:`,
         }],
