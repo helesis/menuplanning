@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { CalendarDays, BarChart2, Upload, UtensilsCrossed, User, LayoutGrid, Tag, Scale, BookOpen, Users, LogOut } from 'lucide-react'
+import { CalendarDays, BarChart2, Upload, UtensilsCrossed, User, LayoutGrid, Tag, Scale, BookOpen, Users, LogOut, Printer } from 'lucide-react'
 import * as api from './api.js'
 import WeeklyPage from './pages/WeeklyPage.jsx'
 import StatsPage from './pages/StatsPage.jsx'
@@ -11,10 +11,12 @@ import BalancePage from './pages/BalancePage.jsx'
 import RecipesPage from './pages/RecipesPage.jsx'
 import UsersPage from './pages/UsersPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import ProductionPlanModal from './pages/ProductionPlanModal.jsx'
 import Toast from './components/Toast.jsx'
 
 export default function App() {
   const [page, setPage] = useState('stations')
+  const [showProductionPlan, setShowProductionPlan] = useState(false)
   const [menus, setMenus] = useState([])
   const [templates, setTemplates] = useState([])
   const [toasts, setToasts] = useState([])
@@ -118,6 +120,21 @@ export default function App() {
             </a>
           )}
         </nav>
+        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setShowProductionPlan(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+              padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+              background: 'none', border: '1px solid var(--border)',
+              color: 'var(--text-dim)', fontSize: 12, fontFamily: 'inherit',
+              fontWeight: 500,
+            }}
+          >
+            <Printer size={14} /> Üretim Planı
+          </button>
+        </div>
+
         <div className="sidebar-footer">
           <div className="sidebar-user">
             <div className="user-avatar"><User size={14} /></div>
@@ -151,6 +168,7 @@ export default function App() {
       </div>
 
       <Toast toasts={toasts} />
+      {showProductionPlan && <ProductionPlanModal onClose={() => setShowProductionPlan(false)} />}
     </>
   )
 }
