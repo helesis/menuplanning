@@ -14,7 +14,7 @@ import LoginPage from './pages/LoginPage.jsx'
 import Toast from './components/Toast.jsx'
 
 export default function App() {
-  const [page, setPage] = useState('weekly')
+  const [page, setPage] = useState('stations')
   const [menus, setMenus] = useState([])
   const [templates, setTemplates] = useState([])
   const [toasts, setToasts] = useState([])
@@ -73,8 +73,8 @@ export default function App() {
   }
 
   const navItems = [
-    { key: 'weekly',    icon: <CalendarDays size={16} />,     label: 'Haftalık Plan' },
     { key: 'stations',  icon: <LayoutGrid size={16} />,       label: 'İstasyon Görünümü' },
+    { key: 'weekly',    icon: <CalendarDays size={16} />,     label: 'Haftalık Plan' },
     { key: 'balance',   icon: <Scale size={16} />,            label: 'Denge Analizi' },
     { key: 'stats',     icon: <BarChart2 size={16} />,        label: 'İstatistikler' },
     { key: 'import',    icon: <Upload size={16} />,           label: 'İçe Aktar' },
