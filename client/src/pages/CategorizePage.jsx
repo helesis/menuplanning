@@ -30,13 +30,16 @@ export default function CategorizePage({ toast, isAdmin = false }) {
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(null)
   const [filter, setFilter] = useState('all') // 'all' | 'uncategorized'
+  const [menus, setMenus] = useState([])
+  const [selectedMenuId, setSelectedMenuId] = useState('')
   const evtRef = useRef(null)
 
   useEffect(() => {
     Promise.all([
       fetch('/api/courses').then(r => r.json()),
       fetch('/api/dishes/all').then(r => r.json()),
-    ]).then(([c, d]) => { setCourses(c); setDishes(d); setLoading(false) })
+      fetch('/api/menus').then(r => r.json()),
+    ]).then(([c, d, m]) => { setCourses(c); setDishes(d); setMenus(m); setLoading(false) })
   }, [])
 
   const reload = () => fetch('/api/dishes/all').then(r => r.json()).then(setDishes)
@@ -134,6 +137,28 @@ export default function CategorizePage({ toast, isAdmin = false }) {
     reload()
   }
 
+  const resetAndCategorizeMenu = async () => {
+    if (!selectedMenuId) return
+    const menu = menus.find(m => m.id === Number(selectedMenuId))
+    const label = menu ? `${DAYS[menu.day_of_week - 1]} ${MEAL[menu.meal_type]}` : 'seçili menü'
+    if (!confirm(`"${label}" menüsünün kategorileri sıfırlanıp yeniden AI ile belirlenecek. Emin misin?`)) return
+    await fetch(`/api/menus/${selectedMenuId}/reset-courses`, { method: 'POST' })
+    await reload()
+    setRunning(true)
+    setProgress({ done: 0, total: 0 })
+    const es = new EventSource(`/api/menus/${selectedMenuId}/categorize`)
+    evtRef.current = es
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data)
+      setProgress(data)
+      if (data.finished) {
+        es.close(); setRunning(false); reload()
+        toast(`${label} menüsü kategorilendi!`, 'success')
+      }
+    }
+    es.onerror = () => { es.close(); setRunning(false); toast('Bağlantı hatası', 'error') }
+  }
+
   const filtered = filter === 'uncategorized'
     ? dishes.filter(d => !d.course)
     : dishes
@@ -147,7 +172,32 @@ export default function CategorizePage({ toast, isAdmin = false }) {
           <div className="page-title">Yemek Kategorileri</div>
           <div className="page-sub">{dishes.length} yemek · {uncategorizedCount} kategorisiz</div>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Tek menü kategorile */}
+          {isAdmin && !running && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
+              <select
+                value={selectedMenuId}
+                onChange={e => setSelectedMenuId(e.target.value)}
+                style={{ fontSize: 12, border: 'none', background: 'transparent', color: 'var(--text)', cursor: 'pointer', outline: 'none' }}
+              >
+                <option value="">— Menü seç —</option>
+                {menus.sort((a,b) => a.day_of_week - b.day_of_week || (a.meal_type === 'dinner' ? 1 : -1)).map(m => (
+                  <option key={m.id} value={m.id}>
+                    {DAYS[m.day_of_week - 1]} {MEAL[m.meal_type]}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={resetAndCategorizeMenu}
+                disabled={!selectedMenuId}
+                style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <RefreshCw size={12} /> Yeniden Kategorile
+              </button>
+            </div>
+          )}
           {running && (
             <button className="btn btn-danger btn-sm" onClick={stopAll}>
               Durdur

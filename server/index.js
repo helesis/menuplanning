@@ -882,6 +882,90 @@ app.post('/api/dishes/reset-courses', (req, res) => {
   res.json({ ok: true, reset: count });
 });
 
+// Belirli menü için reset
+app.post('/api/menus/:id/reset-courses', (req, res) => {
+  const menu = findMenu(req.params.id);
+  if (!menu) return res.status(404).json({ error: 'Menü bulunamadı' });
+  let count = 0;
+  for (const station of menu.stations)
+    for (const dish of station.dishes)
+      { dish.course = null; count++; }
+  db.write();
+  res.json({ ok: true, reset: count });
+});
+
+// Belirli menü için kategorilendirme (SSE)
+app.get('/api/menus/:id/categorize', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(400).json({ error: 'ANTHROPIC_API_KEY eksik' });
+  const menu = findMenu(req.params.id);
+  if (!menu) return res.status(404).json({ error: 'Menü bulunamadı' });
+
+  const nameMap = {};
+  for (const station of menu.stations)
+    for (const dish of station.dishes) {
+      const key = dish.name.trim().toLowerCase();
+      if (!nameMap[key]) nameMap[key] = { displayName: dish.name.trim(), stationName: station.name, dishes: [] };
+      nameMap[key].dishes.push(dish);
+    }
+  const groups = Object.values(nameMap);
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const courseList = COURSES.map(c => `${c.id}: ${c.label}`).join('\n');
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  let done = 0;
+  const total = groups.length;
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  for (const group of groups) {
+    try {
+      const msg = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: `Türk mutfağında bu yemeği aşağıdaki kategorilerden birine ata. Sadece kategori id'sini yaz, başka hiçbir şey yazma.
+
+Yemek: ${group.displayName}
+İstasyon: ${group.stationName}
+
+Kategoriler:
+${courseList}
+
+İPUÇLARI (istasyon adına değil, yemek adına bak):
+- Çorba, corba, soup → soup
+- Dana, kuzu, köfte, bonfile, antrikot, kavurma, güveç (kırmızı et) → red_meat
+- Tavuk, hindi, piliç (beyaz et) → white_meat
+- Balık, levrek, çipura, somon, hamsi → fish
+- Karides, kalamar, midye, deniz mahsulleri → seafood
+- Makarna, pilav, risotto, noodle → pasta_rice
+- Soğuk meze, soğuk salata, zeytinyağlı → cold_starter
+- Sıcak meze, börek, gözleme → hot_starter
+- Tatlı, sütlaç, baklava, dondurma → dessert
+- Peynir çeşidi → cheese
+- Zeytin → olive
+- Sos, salata sosu, garnitür → sauce
+- Sebze, türlü, güveç (sebze ağırlıklı) → vegetable
+
+Kategori id:` }],
+      });
+      const rawId = msg.content[0].text.trim().toLowerCase().replace(/[^a-z_]/g, '');
+      const valid = COURSES.find(c => c.id === rawId);
+      const finalId = valid ? rawId : 'other';
+      for (const dish of group.dishes) dish.course = finalId;
+      db.write();
+      done++;
+      send({ done, total, dish: group.displayName, course: finalId });
+    } catch (err) {
+      done++;
+      send({ done, total, dish: group.displayName, error: err.message });
+    }
+  }
+  send({ done, total, finished: true });
+  res.end();
+});
+
 // Toplu AI kategorilendirme — teker teker, claude-sonnet
 app.get('/api/dishes/categorize-all', async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
