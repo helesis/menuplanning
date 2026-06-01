@@ -89,7 +89,8 @@ export default function StationViewPage({ isAdmin = false }) {
     loadMatches(updated)
   }, [menu, loadMatches])
 
-  const handleDeleteDish = useCallback(async (dishId) => {
+  const handleDeleteDish = useCallback(async (dishId, dishName) => {
+    if (!confirm(`"${dishName}" yemeği silinsin mi?`)) return
     await api.deleteDish(dishId)
     refreshMenu()
   }, [refreshMenu])
@@ -273,7 +274,7 @@ export default function StationViewPage({ isAdmin = false }) {
                             )}
 
                             <button
-                              onClick={() => handleDeleteDish(dish.id)}
+                              onClick={() => handleDeleteDish(dish.id, dish.name)}
                               title="Yemeği çıkar"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px 2px', display: 'flex', color: 'var(--text-xdim)', opacity: 0, transition: 'opacity .15s' }}
                               className="dish-delete-btn"
