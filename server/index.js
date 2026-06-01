@@ -1752,16 +1752,46 @@ app.get('/api/recipe-bolumler', (req, res) => {
   res.json(bolumler);
 });
 
-// GET /api/ingredients — malzeme listesi (arama)
+// GET /api/ingredients — malzeme listesi (arama, relevance sıralı)
 app.get('/api/ingredients', (req, res) => {
-  const q = (req.query.q || '').toUpperCase();
-  let list = recipeInglist;
-  if (q) list = list.filter(i => i.ing_name && i.ing_name.toUpperCase().includes(q));
-  res.json(list.slice(0, 200).map(i => ({
-    ing_no: i.ing_no, ing_name: i.ing_name, ing_birim: i.ing_birim,
-    ing_fiyat: i.ing_fiyat, wastepercent: i.wastepercent,
-    allergens: ['gluten','kabuklu','yumurta','balik','fistik','soya','sut','sertkabuk','kereviz','hardal','susam','so2','bal','et'].filter(f => i[f]),
-  })));
+  const raw = (req.query.q || '').trim();
+  if (!raw) return res.json([]);
+
+  const q     = raw.toUpperCase();
+  const qNorm = normASCII(raw).toUpperCase(); // Türkçe → ASCII
+  const words = q.split(/\s+/).filter(Boolean);
+
+  const scored = recipeInglist
+    .filter(i => i.ing_name)
+    .map(i => {
+      const name     = i.ing_name.toUpperCase();
+      const nameNorm = normASCII(i.ing_name).toUpperCase();
+
+      // Her kelime name veya normASCII'de geçiyor mu?
+      const allWordsMatch = words.every(w => name.includes(w) || nameNorm.includes(normASCII(w).toUpperCase()));
+      if (!allWordsMatch) return null;
+
+      let score = 0;
+      if (name === q || nameNorm === qNorm)          score = 100; // tam eşleşme
+      else if (name.startsWith(q) || nameNorm.startsWith(qNorm)) score = 80;  // başında
+      else if (name.includes(' ' + q) || nameNorm.includes(' ' + qNorm)) score = 60; // kelime başında
+      else score = 40 - (name.length - q.length) * 0.1; // uzunluk cezası
+
+      // Fiyatı olan malzemeye küçük bonus
+      if (i.ing_fiyat > 0) score += 2;
+
+      return { i, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 30)
+    .map(({ i }) => ({
+      ing_no: i.ing_no, ing_name: i.ing_name, ing_birim: i.ing_birim,
+      ing_fiyat: i.ing_fiyat, wastepercent: i.wastepercent,
+      allergens: ['gluten','kabuklu','yumurta','balik','fistik','soya','sut','sertkabuk','kereviz','hardal','susam','so2','bal','et'].filter(f => i[f]),
+    }));
+
+  res.json(scored);
 });
 
 // ─── Auth & User Management ──────────────────────────────────────────────────
