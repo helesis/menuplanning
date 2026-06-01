@@ -453,58 +453,84 @@ function RecipePanel({ panel, onClose, onSaved }) {
     : typeInfo.label
 
   return (
-    <div
-      className="recipe-panel"
-      onClick={e => e.stopPropagation()}
-      style={{
-        position: 'fixed', bottom: 24, right: 24,
-        width: 460, maxHeight: '80vh',
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 14,
-        boxShadow: '0 8px 40px rgba(0,0,0,.18)',
-        zIndex: 1000,
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.25)',
+          zIndex: 999,
+        }}
+      />
+
+      {/* Drawer */}
+      <div
+        className="recipe-panel"
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', top: 0, right: 0, bottom: 0,
+          width: 520,
+          background: 'var(--surface)',
+          borderLeft: '1px solid var(--border)',
+          boxShadow: '-8px 0 40px rgba(0,0,0,.15)',
+          zIndex: 1000,
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
       {/* Header */}
       <div style={{
-        padding: '12px 16px', borderBottom: '1px solid var(--border)',
+        padding: '18px 24px', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: headerColor + '14',
+        background: headerColor + '10', flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {isEditMode ? <Pencil size={14} style={{ color: headerColor }} /> : <BookOpen size={14} style={{ color: headerColor }} />}
-          <span style={{ fontSize: 12, fontWeight: 700, color: headerColor, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            {headerLabel}
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>— {dishName}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 8,
+            background: headerColor + '20',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {isEditMode ? <Pencil size={16} style={{ color: headerColor }} /> : <BookOpen size={16} style={{ color: headerColor }} />}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: headerColor, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              {headerLabel}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 1, fontWeight: 500 }}>{dishName}</div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {!isEditMode && canEdit && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {!isEditMode && !isSelectMode && canEdit && (
             <button
-              className="icon-btn"
-              title="Düzenle"
-              onClick={() => setMode(type === 'custom' ? 'edit' : 'edit')}
-              style={{ width: 26, height: 26 }}
+              className="btn"
+              style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+              onClick={() => setMode('edit')}
             >
-              <Pencil size={12} />
+              <Pencil size={12} /> Düzenle
             </button>
           )}
-          <button className="btn btn-ghost btn-sm btn-icon" onClick={onClose}><X size={13} /></button>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-dim)', padding: 6, borderRadius: 6, display: 'flex',
+            }}
+          >
+            <X size={18} />
+          </button>
         </div>
       </div>
 
       {/* Recipe selector */}
-      {!isEditMode && recipes.length > 1 && (
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {!isEditMode && !isSelectMode && recipes.length > 1 && (
+        <div style={{ padding: '10px 24px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
           {recipes.map(r => (
             <button
               key={r.y_no}
               onClick={() => setSelected(r.y_no)}
               style={{
-                fontSize: 11, padding: '3px 10px', borderRadius: 20, cursor: 'pointer', border: 'none',
+                fontSize: 12, padding: '4px 12px', borderRadius: 20, cursor: 'pointer', border: 'none',
                 background: selected === r.y_no ? typeInfo.color : 'var(--bg)',
                 color: selected === r.y_no ? '#fff' : 'var(--text)',
                 fontWeight: selected === r.y_no ? 700 : 400,
@@ -517,7 +543,7 @@ function RecipePanel({ panel, onClose, onSaved }) {
       )}
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 32px' }}>
         {/* SELECT MODE */}
         {isSelectMode && (
           <NearbySelectContent
@@ -609,14 +635,14 @@ function RecipePanel({ panel, onClose, onSaved }) {
 
         {/* EDIT / CREATE MODE */}
         {isEditMode && (
-          <div style={{ paddingTop: 12 }}>
+          <div style={{ paddingTop: 20 }}>
             <AiGenerateButton dishName={dishName} onGenerated={setEditIngredients} />
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14, marginTop: 4 }}>
               Malzemeleri ekleyip miktarlarını belirtin. Kaydedince özel reçete olarak saklanır.
             </div>
 
             {/* Ingredient table + inline add row */}
-            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 12 }}>
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', marginBottom: 16 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   <th style={{ padding: '4px 0', textAlign: 'left', color: 'var(--text-dim)', fontWeight: 600 }}>Malzeme</th>
@@ -679,18 +705,18 @@ function RecipePanel({ panel, onClose, onSaved }) {
             </table>
 
             {/* Save / Cancel */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
               <button
                 className="btn btn-primary"
-                style={{ flex: 1, fontSize: 13 }}
+                style={{ flex: 1, fontSize: 14, padding: '10px 0' }}
                 onClick={handleSave}
                 disabled={saving}
               >
-                <Check size={13} /> {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                <Check size={14} /> {saving ? 'Kaydediliyor…' : 'Reçeteyi Kaydet'}
               </button>
               <button
                 className="btn"
-                style={{ fontSize: 13 }}
+                style={{ fontSize: 14, padding: '10px 16px' }}
                 onClick={() => {
                   if (mode === 'create') onClose()
                   else setMode('view')
@@ -702,7 +728,8 @@ function RecipePanel({ panel, onClose, onSaved }) {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
