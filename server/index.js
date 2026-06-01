@@ -1783,8 +1783,12 @@ app.get('/api/ingredients', (req, res) => {
       return { i, score };
     })
     .filter(Boolean)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 30)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      // Aynı skorda: isim uzunluğu artan (kısa = daha temiz eşleşme)
+      return a.i.ing_name.length - b.i.ing_name.length;
+    })
+    .slice(0, 40)
     .map(({ i }) => ({
       ing_no: i.ing_no, ing_name: i.ing_name, ing_birim: i.ing_birim,
       ing_fiyat: i.ing_fiyat, wastepercent: i.wastepercent,

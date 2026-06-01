@@ -317,10 +317,10 @@ export default function StationViewPage() {
           position: absolute; top: calc(100% + 4px); left: 0; right: 0;
           background: var(--surface); border: 1px solid var(--border);
           border-radius: var(--radius); box-shadow: var(--shadow-lg);
-          z-index: 2000; max-height: 200px; overflow-y: auto;
+          z-index: 2000; max-height: 420px; overflow-y: auto;
         }
         .ing-dropdown-item {
-          padding: 7px 12px; font-size: 12px; cursor: pointer;
+          padding: 9px 12px; font-size: 13px; cursor: pointer;
           border-bottom: 1px solid var(--border);
         }
         .ing-dropdown-item:last-child { border-bottom: none; }
@@ -890,7 +890,7 @@ function IngredientAddRow({ onAdd }) {
     timerRef.current = setTimeout(() => {
       fetch(`/api/ingredients?q=${encodeURIComponent(q)}`)
         .then(r => r.json())
-        .then(data => { setResults(data.slice(0, 20)); setOpen(true) })
+        .then(data => { setResults(data); setOpen(true) })
         .catch(() => {})
     }, 200)
   }, [])
