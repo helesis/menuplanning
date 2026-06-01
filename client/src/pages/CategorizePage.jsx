@@ -148,11 +148,12 @@ export default function CategorizePage({ toast, isAdmin = false }) {
           <div className="page-sub">{dishes.length} yemek · {uncategorizedCount} kategorisiz</div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {running ? (
+          {running && (
             <button className="btn btn-danger btn-sm" onClick={stopAll}>
               Durdur
             </button>
-          ) : isAdmin ? (
+          )}
+          {!running && isAdmin && (
             <>
               <button className="btn btn-primary" onClick={categorizeAll} disabled={uncategorizedCount === 0}>
                 <Sparkles size={14} /> Kategorisizleri Kategorile ({uncategorizedCount})
@@ -168,7 +169,7 @@ export default function CategorizePage({ toast, isAdmin = false }) {
               <button className="btn btn-ghost btn-sm" onClick={resetAndCategorize}>
                 <RefreshCw size={14} /> Sıfırla ve Yeniden Kategorile
               </button>
-            </>) : null
+            </>
           )}
         </div>
       </div>
