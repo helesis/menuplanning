@@ -34,6 +34,8 @@ export default function StationViewPage({ isAdmin = false }) {
   const [activePanel, setActivePanel]   = useState(null)
   const [addingDish, setAddingDish]     = useState(null) // { stationId }
   const [newDishName, setNewDishName]   = useState('')
+  const [draggingDish, setDraggingDish] = useState(null) // { dishId, dishName }
+  const [dragOverStation, setDragOverStation] = useState(null) // stationId
 
   // Dışarı tıklayınca paneli kapat
   useEffect(() => {
@@ -102,6 +104,17 @@ export default function StationViewPage({ isAdmin = false }) {
     setAddingDish(null)
     refreshMenu()
   }, [newDishName, refreshMenu])
+
+  const handleMoveDish = useCallback(async (dishId, targetStationId) => {
+    await fetch(`/api/dishes/${dishId}/station`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stationId: targetStationId }),
+    })
+    setDraggingDish(null)
+    setDragOverStation(null)
+    refreshMenu()
+  }, [refreshMenu])
 
   const onRecipeSaved = useCallback((dishName) => {
     // Reçete kaydedilince eşleşmeleri yenile
@@ -190,7 +203,25 @@ export default function StationViewPage({ isAdmin = false }) {
 
             <div className="station-view-grid">
               {sec.stations.map(station => (
-                <div key={station.id} className="station-view-card">
+                <div
+                  key={station.id}
+                  className="station-view-card"
+                  onDragOver={e => { e.preventDefault(); setDragOverStation(station.id) }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverStation(null) }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    if (draggingDish && draggingDish.sourceStationId !== station.id)
+                      handleMoveDish(draggingDish.dishId, station.id)
+                    else setDragOverStation(null)
+                  }}
+                  style={{
+                    outline: dragOverStation === station.id && draggingDish?.sourceStationId !== station.id
+                      ? '2px dashed var(--gold)' : 'none',
+                    background: dragOverStation === station.id && draggingDish?.sourceStationId !== station.id
+                      ? 'var(--gold-bg)' : undefined,
+                    transition: 'outline .1s, background .1s',
+                  }}
+                >
                   <div className="station-view-header" style={{ borderLeft: `3px solid ${sec.color}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>{station.name}</span>
                     <button
@@ -238,9 +269,19 @@ export default function StationViewPage({ isAdmin = false }) {
                       }
 
                       return (
-                        <div key={dish.id} className="station-view-dish">
+                        <div
+                          key={dish.id}
+                          className="station-view-dish"
+                          draggable
+                          onDragStart={e => {
+                            setDraggingDish({ dishId: dish.id, dishName: dish.name, sourceStationId: station.id })
+                            e.dataTransfer.effectAllowed = 'move'
+                          }}
+                          onDragEnd={() => { setDraggingDish(null); setDragOverStation(null) }}
+                          style={{ opacity: draggingDish?.dishId === dish.id ? 0.4 : 1, cursor: 'grab' }}
+                        >
                           <span className="station-view-dish-name">
-                            <Utensils size={11} style={{ flexShrink: 0, color: 'var(--text-xdim)' }} />
+                            <Utensils size={11} style={{ flexShrink: 0, color: 'var(--text-xdim)', cursor: 'grab' }} />
                             {dish.name}
                           </span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -357,6 +398,7 @@ export default function StationViewPage({ isAdmin = false }) {
         }
         .station-view-dish:last-child { border-bottom: none; }
         .station-view-dish:hover .dish-delete-btn { opacity: 1 !important; }
+        .station-view-dish:active { cursor: grabbing; }
         .station-view-dish-name {
           display: flex; align-items: center; gap: 7px;
           flex: 1; color: var(--text); min-width: 0;

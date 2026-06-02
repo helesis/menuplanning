@@ -232,6 +232,37 @@ app.put('/api/dishes/:id', (req, res) => {
 });
 
 // Delete dish
+// Yemeği başka bir istasyona taşı
+app.put('/api/dishes/:id/station', (req, res) => {
+  const dishId     = Number(req.params.id);
+  const targetStId = Number(req.body.stationId);
+  let dish = null;
+
+  // Kaynaktan al
+  for (const menu of db.get('menus').value()) {
+    for (const station of menu.stations) {
+      const idx = station.dishes.findIndex(d => d.id === dishId);
+      if (idx !== -1) {
+        dish = station.dishes.splice(idx, 1)[0];
+        break;
+      }
+    }
+    if (dish) break;
+  }
+  if (!dish) return res.status(404).json({ error: 'Yemek bulunamadı' });
+
+  // Hedefe ekle
+  let added = false;
+  for (const menu of db.get('menus').value()) {
+    const targetSt = menu.stations.find(s => s.id === targetStId);
+    if (targetSt) { targetSt.dishes.push(dish); added = true; break; }
+  }
+  if (!added) return res.status(404).json({ error: 'Hedef istasyon bulunamadı' });
+
+  db.write();
+  res.json({ ok: true });
+});
+
 app.delete('/api/dishes/:id', (req, res) => {
   const numId = Number(req.params.id);
   for (const menu of db.get('menus').value()) {
