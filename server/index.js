@@ -2160,7 +2160,7 @@ async function sendAlertEmail(alerts, date) {
   }
 }
 
-cron.schedule('5 11 * * *', async () => {
+cron.schedule('30 11 * * *', async () => {
   const today = toISO(new Date());
   console.log(`[HAL] Otomatik senkronizasyon: ${today}`);
   const result = await syncHalDate(today);
