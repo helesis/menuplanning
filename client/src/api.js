@@ -44,3 +44,4 @@ export const halProducts   = (token)          => fetch('/api/hal/products',     
 export const halAlerts     = (token)          => fetch('/api/hal/alerts',                { headers: authH(token) }).then(r => r.json())
 export const halSync       = (token, date)    => fetch('/api/hal/sync',      { method: 'POST', headers: authH(token), body: JSON.stringify({ date }) }).then(r => r.json())
 export const halSyncRange  = (token, from, to)=> fetch('/api/hal/sync-range',{ method: 'POST', headers: authH(token), body: JSON.stringify({ from, to }) }).then(r => r.json())
+export const halTracked    = (token)          => fetch('/api/hal/tracked',               { headers: authH(token) }).then(r => r.json())
