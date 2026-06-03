@@ -20,6 +20,7 @@ const jwt      = require('jsonwebtoken');
 const https    = require('https');
 const cheerio  = require('cheerio');
 const cron     = require('node-cron');
+const { Resend } = require('resend');
 
 // Kurs kategorileri
 const COURSES = [
@@ -2100,11 +2101,95 @@ async function syncHalDate(dateStr) {
 }
 
 // Günlük otomatik çekme: her gün 11:05
+async function sendAlertEmail(alerts, date) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to     = process.env.RESEND_TO;
+  const from   = process.env.RESEND_FROM || 'MenuPlanning <noreply@voyagestars.com>';
+  if (!apiKey || !to) { console.log('[HAL] E-posta atlanıyor: RESEND_API_KEY veya RESEND_TO eksik'); return; }
+  if (!alerts.length) { console.log('[HAL] Uyarı yok, e-posta gönderilmeyecek'); return; }
+
+  const rows = alerts.map(a => `
+    <tr>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;font-weight:600">${a.name}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;color:#6b7280">${a.days}g ort.</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;text-align:right">${a.avg?.toFixed(2)} ₺</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:700">${a.curHigh?.toFixed(2)} ₺</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;text-align:center">
+        <span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;background:${a.pct > 0 ? '#fee2e2' : '#dcfce7'};color:${a.pct > 0 ? '#dc2626' : '#16a34a'}">
+          ${a.pct > 0 ? '+' : ''}${a.pct}%
+        </span>
+      </td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;color:#6b7280">${a.unit}</td>
+    </tr>`).join('');
+
+  const html = `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:680px;margin:0 auto;background:#fff">
+    <div style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);padding:24px 32px;border-radius:12px 12px 0 0">
+      <h1 style="margin:0;color:#fff;font-size:20px">🥦 Hal Fiyat Değişim Uyarısı</h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:14px">${date} · ${alerts.length} üründe ≥%10 değişim</p>
+    </div>
+    <div style="padding:24px 32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px">
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead>
+          <tr style="background:#f9fafb">
+            <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:2px solid #e5e7eb">Ürün</th>
+            <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:2px solid #e5e7eb">Dönem</th>
+            <th style="padding:10px 14px;text-align:right;color:#374151;font-weight:600;border-bottom:2px solid #e5e7eb">Ortalama</th>
+            <th style="padding:10px 14px;text-align:right;color:#374151;font-weight:600;border-bottom:2px solid #e5e7eb">Bugün</th>
+            <th style="padding:10px 14px;text-align:center;color:#374151;font-weight:600;border-bottom:2px solid #e5e7eb">Değişim</th>
+            <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:2px solid #e5e7eb">Birim</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">Antalya Merkez Hal · MenuPlanning otomatik uyarı</p>
+    </div>
+  </div>`;
+
+  try {
+    const resend = new Resend(apiKey);
+    const res = await resend.emails.send({
+      from,
+      to: to.split(',').map(s => s.trim()),
+      subject: `🥦 Hal Fiyat Uyarısı ${date} — ${alerts.length} ürün`,
+      html,
+    });
+    console.log('[HAL] E-posta gönderildi:', res.id || res);
+  } catch (e) {
+    console.error('[HAL] E-posta hatası:', e.message);
+  }
+}
+
 cron.schedule('5 11 * * *', async () => {
   const today = toISO(new Date());
   console.log(`[HAL] Otomatik senkronizasyon: ${today}`);
   const result = await syncHalDate(today);
   console.log('[HAL]', result);
+
+  // Uyarıları hesapla ve e-posta gönder
+  const all = db.get('halPrices').value().sort((a, b) => b.date.localeCompare(a.date));
+  if (all.length >= 2) {
+    const todayEntry = all[0];
+    const history = all.slice(1, 8);
+    const avgMap = {};
+    history.forEach(entry => entry.items.forEach(item => {
+      if (item.highN == null) return;
+      if (!avgMap[item.name]) avgMap[item.name] = { sum: 0, count: 0 };
+      avgMap[item.name].sum += item.highN;
+      avgMap[item.name].count += 1;
+    }));
+    const alerts = [];
+    todayEntry.items.forEach(item => {
+      if (item.highN == null || !avgMap[item.name]) return;
+      const avg = avgMap[item.name].sum / avgMap[item.name].count;
+      const pct = ((item.highN - avg) / avg) * 100;
+      if (Math.abs(pct) >= 10) {
+        alerts.push({ name: item.name, unit: item.unit, avg: Math.round(avg * 100) / 100, curHigh: item.highN, pct: Math.round(pct), days: avgMap[item.name].count });
+      }
+    });
+    alerts.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    await sendAlertEmail(alerts, today);
+  }
 }, { timezone: 'Europe/Istanbul' });
 
 // Manuel sync endpoint
