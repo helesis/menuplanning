@@ -27,13 +27,13 @@ function LineChart({ history, W = 240, H = 70 }) {
   if (!history || history.length < 2) {
     return <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 12 }}>Veri yok</div>
   }
-  const vals = history.map(h => h.lowN)
+  const vals = history.map(h => h.highN)
   const min = Math.min(...vals), max = Math.max(...vals)
   const range = max - min || 1
   const pad = 8
   const points = history.map((h, i) => {
     const x = pad + (i / (history.length - 1)) * (W - pad * 2)
-    const y = H - pad - ((h.lowN - min) / range) * (H - pad * 2)
+    const y = H - pad - ((h.highN - min) / range) * (H - pad * 2)
     return [x, y]
   })
   const polyline = points.map(p => p.join(',')).join(' ')
@@ -43,7 +43,7 @@ function LineChart({ history, W = 240, H = 70 }) {
 
   const last = points[points.length - 1]
   const first = points[0]
-  const trend = vals[vals.length-1] >= vals[0]
+  const trend = vals[vals.length - 1] >= vals[0]
 
   return (
     <svg width={W} height={H} style={{ overflow: 'visible', display: 'block' }}>
@@ -79,7 +79,7 @@ function TrackedCard({ item }) {
           )}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: '#1d4ed8' }}>{fmt(item.latest?.lowN)}</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: '#1d4ed8' }}>{fmt(item.latest?.highN)}</div>
           <div style={{ marginTop: 2 }}><PctBadge pct={item.pct} /></div>
         </div>
       </div>
@@ -219,7 +219,7 @@ export default function HalPricesPage({ token, menus }) {
               <div key={a.name} style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
                 <span style={{ fontWeight: 600 }}>{a.name}</span>
                 <span style={{ color: 'var(--text-dim)', margin: '0 6px' }}>{a.days}g ort. {fmt(a.avg)} →</span>
-                <span style={{ fontWeight: 600 }}>{fmt(a.curLow)}</span>
+                <span style={{ fontWeight: 600 }}>{fmt(a.curHigh)}</span>
                 <span style={{ marginLeft: 6 }}><PctBadge pct={a.pct} /></span>
               </div>
             ))}
@@ -316,7 +316,7 @@ export default function HalPricesPage({ token, menus }) {
                 <tbody>
                   {history.slice().reverse().map((h, i, arr) => {
                     const prev = arr[i + 1]
-                    const pct = prev?.lowN && h.lowN ? Math.round(((h.lowN - prev.lowN) / prev.lowN) * 100) : null
+                    const pct = prev?.highN && h.highN ? Math.round(((h.highN - prev.highN) / prev.highN) * 100) : null
                     return (
                       <tr key={h.date}>
                         <td style={{ padding: '7px 12px' }}>{h.date}</td>

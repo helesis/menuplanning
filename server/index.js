@@ -2188,15 +2188,14 @@ app.get('/api/hal/tracked', authMiddleware, (req, res) => {
         const name = i.name.toLowerCase();
         return tp.keywords.some(kw => {
           if (typeof kw === 'string') return name.includes(kw);
-          // exact: kelime tam eşleşmesi (kelime sınırı)
           return new RegExp('(^|[\\s(,/])' + kw.word + '($|[\\s),/])').test(name) || name === kw.word;
         });
       });
       return match ? { date: entry.date, lowN: match.lowN, highN: match.highN, name: match.name } : { date: entry.date, lowN: null, highN: null, name: null };
-    }).filter(h => h.lowN != null);
+    }).filter(h => h.highN != null);
     const latest = history[history.length - 1] || null;
     const prev = history[history.length - 2] || null;
-    const pct = latest && prev && prev.lowN ? Math.round(((latest.lowN - prev.lowN) / prev.lowN) * 100) : null;
+    const pct = latest && prev && prev.highN ? Math.round(((latest.highN - prev.highN) / prev.highN) * 100) : null;
     return { label: tp.label, history, latest, pct };
   });
   res.json(result);
@@ -2222,24 +2221,24 @@ app.get('/api/hal/alerts', authMiddleware, (req, res) => {
   const avgMap = {};
   history.forEach(entry => {
     entry.items.forEach(item => {
-      if (item.lowN == null) return;
+      if (item.highN == null) return;
       if (!avgMap[item.name]) avgMap[item.name] = { sum: 0, count: 0 };
-      avgMap[item.name].sum += item.lowN;
+      avgMap[item.name].sum += item.highN;
       avgMap[item.name].count += 1;
     });
   });
 
   const alerts = [];
   today.items.forEach(item => {
-    if (item.lowN == null || !avgMap[item.name]) return;
+    if (item.highN == null || !avgMap[item.name]) return;
     const avg = avgMap[item.name].sum / avgMap[item.name].count;
-    const pct = ((item.lowN - avg) / avg) * 100;
+    const pct = ((item.highN - avg) / avg) * 100;
     if (Math.abs(pct) >= 10) {
       alerts.push({
         name: item.name,
         unit: item.unit,
         avg: Math.round(avg * 100) / 100,
-        curLow: item.lowN,
+        curHigh: item.highN,
         pct: Math.round(pct),
         days: avgMap[item.name].count,
         date: today.date,
