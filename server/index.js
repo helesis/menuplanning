@@ -2170,18 +2170,40 @@ app.get('/api/hal/products', authMiddleware, (req, res) => {
   res.json([...names].sort());
 });
 
-// Fiyat değişim uyarıları (dün vs bugün)
+// Fiyat değişim uyarıları (bugün vs son 7 günün ortalaması)
 app.get('/api/hal/alerts', authMiddleware, (req, res) => {
   const all = db.get('halPrices').value().sort((a, b) => b.date.localeCompare(a.date));
   if (all.length < 2) return res.json([]);
-  const today = all[0], yesterday = all[1];
+  const today = all[0];
+  const history = all.slice(1, 8); // önceki en fazla 7 gün
+  if (history.length === 0) return res.json([]);
+
+  // Her ürün için son 7 günün lowN ortalamasını hesapla
+  const avgMap = {};
+  history.forEach(entry => {
+    entry.items.forEach(item => {
+      if (item.lowN == null) return;
+      if (!avgMap[item.name]) avgMap[item.name] = { sum: 0, count: 0 };
+      avgMap[item.name].sum += item.lowN;
+      avgMap[item.name].count += 1;
+    });
+  });
+
   const alerts = [];
   today.items.forEach(item => {
-    const prev = yesterday.items.find(i => i.name === item.name);
-    if (!prev || item.lowN == null || prev.lowN == null) return;
-    const pct = ((item.lowN - prev.lowN) / prev.lowN) * 100;
+    if (item.lowN == null || !avgMap[item.name]) return;
+    const avg = avgMap[item.name].sum / avgMap[item.name].count;
+    const pct = ((item.lowN - avg) / avg) * 100;
     if (Math.abs(pct) >= 10) {
-      alerts.push({ name: item.name, unit: item.unit, prevLow: prev.lowN, curLow: item.lowN, pct: Math.round(pct), date: today.date });
+      alerts.push({
+        name: item.name,
+        unit: item.unit,
+        avg: Math.round(avg * 100) / 100,
+        curLow: item.lowN,
+        pct: Math.round(pct),
+        days: avgMap[item.name].count,
+        date: today.date,
+      });
     }
   });
   alerts.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));

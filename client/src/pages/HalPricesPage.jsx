@@ -171,7 +171,7 @@ export default function HalPricesPage({ token, menus }) {
             {alerts.map(a => (
               <div key={a.name} style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
                 <span style={{ fontWeight: 600 }}>{a.name}</span>
-                <span style={{ color: 'var(--text-dim)', margin: '0 6px' }}>{fmt(a.prevLow)} →</span>
+                <span style={{ color: 'var(--text-dim)', margin: '0 6px' }}>{a.days}g ort. {fmt(a.avg)} →</span>
                 <span style={{ fontWeight: 600 }}>{fmt(a.curLow)}</span>
                 <span style={{ marginLeft: 6 }}><PctBadge pct={a.pct} /></span>
               </div>
