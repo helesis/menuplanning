@@ -2099,8 +2099,8 @@ async function syncHalDate(dateStr) {
   }
 }
 
-// Günlük otomatik çekme: her sabah 07:00
-cron.schedule('0 7 * * *', async () => {
+// Günlük otomatik çekme: her gün 11:05
+cron.schedule('5 11 * * *', async () => {
   const today = toISO(new Date());
   console.log(`[HAL] Otomatik senkronizasyon: ${today}`);
   const result = await syncHalDate(today);
