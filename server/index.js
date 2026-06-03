@@ -17,6 +17,9 @@ const XLSX     = require('xlsx');
 const Anthropic = require('@anthropic-ai/sdk');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
+const https    = require('https');
+const cheerio  = require('cheerio');
+const cron     = require('node-cron');
 
 // Kurs kategorileri
 const COURSES = [
@@ -46,7 +49,7 @@ const db = low(new FileSync(path.join(__dirname, 'db.json')));
 
 // ─── Schema defaults ────────────────────────────────────────────────────────────
 
-db.defaults({ menus: [], templates: [], users: [], customRecipes: [], _seq: 200 }).write();
+db.defaults({ menus: [], templates: [], users: [], customRecipes: [], halPrices: [], _seq: 200 }).write();
 
 // ─── Seed default admin user ─────────────────────────────────────────────────
 if (!db.get('users').size().value()) {
@@ -1990,6 +1993,199 @@ app.delete('/api/users/:id', authMiddleware, adminOnly, (req, res) => {
   if (id === req.user.id) return res.status(400).json({ error: 'Kendinizi silemezsiniz' });
   db.get('users').remove({ id }).write();
   res.json({ ok: true });
+});
+
+// ─── HAL FİYATLARI ───────────────────────────────────────────────────────────
+
+const HAL_REGION_ID = '67b1db61b752f39216d8392d';
+const HAL_REGION_NAME = 'Antalya Merkez';
+
+const HAL_PAGE_ID = '67863b6f3206e6473c59e2e8';
+const HAL_DBFIND = JSON.stringify([
+  { field: 'urun_adi',          wherecluse: 'sorting', fieldValue: 'Asc',        pageparamsid: 'Asc',        isrequest: 'False', fieldtype: 'string' },
+  { field: 'tarih',             wherecluse: '=',       fieldValue: 'fiyattarih', pageparamsid: 'fiyattarih', isrequest: 'True',  fieldtype: 'string' },
+  { field: 'hal_isimleri',      wherecluse: '=',       fieldValue: 'halyerleri', pageparamsid: 'halyerleri', isrequest: 'True',  fieldtype: 'string' },
+  { field: 'en_dusuk_fiyat_sayi', wherecluse: '!=',   fieldValue: '0',          pageparamsid: '0',          isrequest: 'false', fieldtype: 'long'   },
+]);
+
+function httpReq(method, url, body, headers) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const buf = body ? Buffer.from(body) : null;
+    const opts = {
+      method, hostname: u.hostname, path: u.pathname + u.search,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ...headers,
+      },
+    };
+    if (buf) {
+      opts.headers['Content-Length'] = buf.length;
+      opts.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+    }
+    const req = https.request(opts, res => {
+      let d = '';
+      const sc = res.headers['set-cookie'] || [];
+      res.on('data', c => d += c);
+      res.on('end', () => resolve({ data: d, cookies: sc, status: res.statusCode }));
+    });
+    req.on('error', reject);
+    if (buf) req.write(buf);
+    req.end();
+  });
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function toTR(date) { return `${pad(date.getDate())}.${pad(date.getMonth()+1)}.${date.getFullYear()}`; }
+function toISO(date) { return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`; }
+
+function priceStr(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v.toFixed(2).replace('.', ',') + ' TL';
+  return String(v);
+}
+
+async function scrapeHalDate(dateStr) {
+  // 1. CSRF token al
+  const pageRes = await httpReq('GET', 'https://www.antalya.bel.tr/tr/halden-gunluk-fiyatlar', null, {});
+  const tokenMatch = pageRes.data.match(/__RequestVerificationToken["'][^>]*value=["']([A-Za-z0-9_\-]+)/);
+  if (!tokenMatch) throw new Error('CSRF token bulunamadı');
+  const token = tokenMatch[1];
+  const cookie = pageRes.cookies.map(c => c.split(';')[0]).join('; ');
+
+  // 2. MarketPrices API çağrısı
+  const rq = encodeURIComponent(JSON.stringify({ halyerleri: HAL_REGION_ID, fiyattarih: dateStr }));
+  const body = '__RequestVerificationToken=' + encodeURIComponent(token) +
+    '&colllection=MarketPrices&lang=1&dateformat=&dbfind=' + encodeURIComponent(HAL_DBFIND) +
+    '&pageid=' + HAL_PAGE_ID + '&requestquery=' + rq +
+    '&collectiontype=0&relationcollection=&collectionfunction=&seolink=halden-gunluk-fiyatlar' +
+    '&sourcetablerefcombobox=&destinationtablerefcombobox=&tablerefselectprojectionfield=&isexitingcontrolrequest=false';
+
+  const apiRes = await httpReq('POST', 'https://www.antalya.bel.tr/tr/seolink/VueData/GetVueData', body, {
+    'X-Requested-With': 'XMLHttpRequest',
+    'Referer': 'https://www.antalya.bel.tr/tr/halden-gunluk-fiyatlar',
+    'Cookie': cookie,
+  });
+
+  let parsed;
+  try { parsed = JSON.parse(apiRes.data); } catch(e) { throw new Error('API yanıtı parse edilemedi'); }
+  if (!parsed.issuccess) throw new Error('API başarısız');
+
+  let innerData;
+  try { innerData = JSON.parse(parsed.data); } catch(e) { throw new Error('İç veri parse edilemedi'); }
+
+  const products = innerData.products || [];
+  return products.map(p => ({
+    name:  p.urun_adi || '',
+    low:   typeof p.en_dusuk_fiyat  === 'string' ? p.en_dusuk_fiyat  : String(p.en_dusuk_fiyat_sayi  || ''),
+    high:  typeof p.en_yuksek_fiyat === 'string' ? p.en_yuksek_fiyat : String(p.en_yuksek_fiyat_sayi || ''),
+    lowN:  typeof p.en_dusuk_fiyat_sayi  === 'number' ? p.en_dusuk_fiyat_sayi  : null,
+    highN: typeof p.en_yuksek_fiyat_sayi === 'number' ? p.en_yuksek_fiyat_sayi : null,
+    unit:  (p.birim_adi_combobox && p.birim_adi_combobox.birim_adi) || p.refUnitId || '',
+  })).filter(p => p.name);
+}
+
+async function syncHalDate(dateStr) {
+  const existing = db.get('halPrices').find({ date: dateStr }).value();
+  if (existing && existing.items && existing.items.length > 0) return { skipped: true, date: dateStr };
+  try {
+    const items = await scrapeHalDate(dateStr);
+    if (items.length === 0) return { empty: true, date: dateStr };
+    db.get('halPrices').remove({ date: dateStr }).write();
+    db.get('halPrices').push({ date: dateStr, region: HAL_REGION_NAME, syncedAt: new Date().toISOString(), items }).write();
+    return { ok: true, date: dateStr, count: items.length };
+  } catch(e) {
+    return { error: e.message, date: dateStr };
+  }
+}
+
+// Günlük otomatik çekme: her sabah 07:00
+cron.schedule('0 7 * * *', async () => {
+  const today = toISO(new Date());
+  console.log(`[HAL] Otomatik senkronizasyon: ${today}`);
+  const result = await syncHalDate(today);
+  console.log('[HAL]', result);
+}, { timezone: 'Europe/Istanbul' });
+
+// Manuel sync endpoint
+app.post('/api/hal/sync', authMiddleware, async (req, res) => {
+  const { date } = req.body;
+  const d = date || toISO(new Date());
+  const result = await syncHalDate(d);
+  res.json(result);
+});
+
+// Birden fazla gün sync (tarih aralığı)
+app.post('/api/hal/sync-range', authMiddleware, async (req, res) => {
+  const { from, to } = req.body;
+  if (!from || !to) return res.status(400).json({ error: 'from ve to gerekli (YYYY-MM-DD)' });
+  const start = new Date(from), end = new Date(to);
+  if (end < start) return res.status(400).json({ error: 'Bitiş başlangıçtan önce olamaz' });
+  const days = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) days.push(toISO(new Date(d)));
+  if (days.length > 30) return res.status(400).json({ error: 'En fazla 30 gün' });
+  res.json({ started: true, days: days.length });
+  for (const day of days) {
+    const r = await syncHalDate(day);
+    console.log('[HAL]', r);
+    await new Promise(ok => setTimeout(ok, 2000));
+  }
+});
+
+// Belirli tarih fiyatları
+app.get('/api/hal/prices', authMiddleware, (req, res) => {
+  const { date } = req.query;
+  const d = date || toISO(new Date());
+  const entry = db.get('halPrices').find({ date: d }).value();
+  res.json(entry || null);
+});
+
+// Son mevcut fiyat günü
+app.get('/api/hal/latest', authMiddleware, (req, res) => {
+  const all = db.get('halPrices').value();
+  if (!all.length) return res.json(null);
+  const latest = all.sort((a, b) => b.date.localeCompare(a.date))[0];
+  res.json(latest);
+});
+
+// Ürün bazlı geçmiş
+app.get('/api/hal/history', authMiddleware, (req, res) => {
+  const { product } = req.query;
+  if (!product) return res.status(400).json({ error: 'product parametresi gerekli' });
+  const q = product.toLowerCase();
+  const all = db.get('halPrices').value();
+  const history = [];
+  all.sort((a, b) => a.date.localeCompare(b.date)).forEach(entry => {
+    const match = entry.items.find(i => i.name.toLowerCase().includes(q));
+    if (match) history.push({ date: entry.date, ...match });
+  });
+  res.json(history);
+});
+
+// Tüm bilinen ürün adları (autocomplete için)
+app.get('/api/hal/products', authMiddleware, (req, res) => {
+  const all = db.get('halPrices').value();
+  const names = new Set();
+  all.forEach(entry => entry.items.forEach(i => names.add(i.name)));
+  res.json([...names].sort());
+});
+
+// Fiyat değişim uyarıları (dün vs bugün)
+app.get('/api/hal/alerts', authMiddleware, (req, res) => {
+  const all = db.get('halPrices').value().sort((a, b) => b.date.localeCompare(a.date));
+  if (all.length < 2) return res.json([]);
+  const today = all[0], yesterday = all[1];
+  const alerts = [];
+  today.items.forEach(item => {
+    const prev = yesterday.items.find(i => i.name === item.name);
+    if (!prev || item.lowN == null || prev.lowN == null) return;
+    const pct = ((item.lowN - prev.lowN) / prev.lowN) * 100;
+    if (Math.abs(pct) >= 10) {
+      alerts.push({ name: item.name, unit: item.unit, prevLow: prev.lowN, curLow: item.lowN, pct: Math.round(pct), date: today.date });
+    }
+  });
+  alerts.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+  res.json(alerts);
 });
 
 const PORT = process.env.PORT || 3001;

@@ -32,3 +32,15 @@ export const importParsed = (sheets, { overwrite = false } = {}) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sheets, overwrite }),
   }).then(r => r.json())
+
+// ── HAL FİYATLARI ─────────────────────────────────────────────────────────────
+function authH(token) {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+}
+export const halLatest     = (token)          => fetch('/api/hal/latest',               { headers: authH(token) }).then(r => r.json())
+export const halPrices     = (token, date)    => fetch(`/api/hal/prices?date=${date}`,  { headers: authH(token) }).then(r => r.json())
+export const halHistory    = (token, product) => fetch(`/api/hal/history?product=${encodeURIComponent(product)}`, { headers: authH(token) }).then(r => r.json())
+export const halProducts   = (token)          => fetch('/api/hal/products',              { headers: authH(token) }).then(r => r.json())
+export const halAlerts     = (token)          => fetch('/api/hal/alerts',                { headers: authH(token) }).then(r => r.json())
+export const halSync       = (token, date)    => fetch('/api/hal/sync',      { method: 'POST', headers: authH(token), body: JSON.stringify({ date }) }).then(r => r.json())
+export const halSyncRange  = (token, from, to)=> fetch('/api/hal/sync-range',{ method: 'POST', headers: authH(token), body: JSON.stringify({ from, to }) }).then(r => r.json())
