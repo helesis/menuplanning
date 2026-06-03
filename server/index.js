@@ -2171,7 +2171,7 @@ const TRACKED_PRODUCTS = [
   { label: 'Kavun',      keywords: ['kavun'] },
   { label: 'Patates',    keywords: ['patates'] },
   { label: 'Havuç',      keywords: ['havuç'] },
-  { label: 'Salatalık',  keywords: ['salatalık'] },
+  { label: 'Salatalık',  keywords: ['salatalık', 'hıyar'] },
   { label: 'Çilek',      keywords: ['çilek'] },
   { label: 'Soğan',      keywords: ['soğan'] },
   { label: 'Ananas',     keywords: ['ananas'] },
