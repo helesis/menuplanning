@@ -2176,6 +2176,12 @@ const TRACKED_PRODUCTS = [
   { label: 'Soğan',      keywords: ['soğan'] },
   { label: 'Ananas',     keywords: ['ananas'] },
   { label: 'Muz',        keywords: ['muz'] },
+  { label: 'Kiraz',      keywords: ['kiraz'] },
+  { label: 'Avokado',    keywords: ['avokado'] },
+  { label: 'Şeftali',    keywords: ['şeftali'] },
+  { label: 'Üzüm',       keywords: ['üzüm'] },
+  { label: 'Kayısı',     keywords: ['kayısı'] },
+  { label: 'Kivi',       keywords: ['kivi'] },
 ];
 
 app.get('/api/hal/tracked', authMiddleware, (req, res) => {
