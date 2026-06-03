@@ -2172,7 +2172,7 @@ const TRACKED_PRODUCTS = [
   { label: 'Patates',    keywords: ['patates'] },
   { label: 'Havuç',      keywords: ['havuç'] },
   { label: 'Salatalık',  keywords: ['salatalık', 'hıyar'] },
-  { label: 'Çilek',      keywords: ['çilek'] },
+  { label: 'Çilek',      keywords: [{ word: 'çilek', exact: true }] },
   { label: 'Soğan',      keywords: ['soğan'] },
   { label: 'Ananas',     keywords: ['ananas'] },
   { label: 'Muz',        keywords: ['muz'] },
@@ -2184,9 +2184,14 @@ app.get('/api/hal/tracked', authMiddleware, (req, res) => {
 
   const result = TRACKED_PRODUCTS.map(tp => {
     const history = last30.map(entry => {
-      const match = entry.items.find(i =>
-        tp.keywords.some(kw => i.name.toLowerCase().includes(kw))
-      );
+      const match = entry.items.find(i => {
+        const name = i.name.toLowerCase();
+        return tp.keywords.some(kw => {
+          if (typeof kw === 'string') return name.includes(kw);
+          // exact: kelime tam eşleşmesi (kelime sınırı)
+          return new RegExp('(^|[\\s(,/])' + kw.word + '($|[\\s),/])').test(name) || name === kw.word;
+        });
+      });
       return match ? { date: entry.date, lowN: match.lowN, highN: match.highN, name: match.name } : { date: entry.date, lowN: null, highN: null, name: null };
     }).filter(h => h.lowN != null);
     const latest = history[history.length - 1] || null;
