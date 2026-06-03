@@ -2192,6 +2192,37 @@ cron.schedule('5 11 * * *', async () => {
   }
 }, { timezone: 'Europe/Istanbul' });
 
+// Test e-posta gönderimi
+app.post('/api/hal/test-email', authMiddleware, async (req, res) => {
+  const all = db.get('halPrices').value().sort((a, b) => b.date.localeCompare(a.date));
+  if (all.length < 2) return res.status(400).json({ error: 'Yeterli veri yok (en az 2 gün gerekli)' });
+  const todayEntry = all[0];
+  const history = all.slice(1, 8);
+  const avgMap = {};
+  history.forEach(entry => entry.items.forEach(item => {
+    if (item.highN == null) return;
+    if (!avgMap[item.name]) avgMap[item.name] = { sum: 0, count: 0 };
+    avgMap[item.name].sum += item.highN;
+    avgMap[item.name].count += 1;
+  }));
+  const alerts = [];
+  todayEntry.items.forEach(item => {
+    if (item.highN == null || !avgMap[item.name]) return;
+    const avg = avgMap[item.name].sum / avgMap[item.name].count;
+    const pct = ((item.highN - avg) / avg) * 100;
+    if (Math.abs(pct) >= 10) {
+      alerts.push({ name: item.name, unit: item.unit, avg: Math.round(avg * 100) / 100, curHigh: item.highN, pct: Math.round(pct), days: avgMap[item.name].count });
+    }
+  });
+  alerts.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+  // En az 1 uyarı yoksa örnek veri ekle
+  const testAlerts = alerts.length > 0 ? alerts : [{
+    name: 'Test Ürünü', unit: 'Kg', avg: 20.00, curHigh: 28.00, pct: 40, days: 7,
+  }];
+  await sendAlertEmail(testAlerts, todayEntry.date + ' (TEST)');
+  res.json({ ok: true, alertCount: testAlerts.length, to: process.env.RESEND_TO || 'tanımsız' });
+});
+
 // Manuel sync endpoint
 app.post('/api/hal/sync', authMiddleware, async (req, res) => {
   const { date } = req.body;
