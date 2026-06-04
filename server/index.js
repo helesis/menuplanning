@@ -66,7 +66,7 @@ if (!db.get('templates').size().value()) {
   const names = [
     'ÇORBALAR', 'ARASICAK VE SEBZE YEMEKLERİ', 'GÜVEÇ KÖŞESİ',
     'KESİM SUNUM KÖŞESİ', 'WOK TAVA YEMEKLERİ', 'PANE VE PATATES KÖŞESİ',
-    'BALIK IZGARA KÖŞESİ', 'MAKARNA SHOW İSTASYONU', 'ET TAVUK IZGARA KÖŞESİ',
+    'BALIK IZGARA KÖŞESİ', 'MAKARNA SHOW İSTASYONU', 'IZGARA KÖŞESİ',
     'RUS MUTFAĞI KÖŞESİ', 'SALATA BARI', 'TATLILAR KÖŞESİ',
   ];
   db.set('templates', names.map((name, i) => ({ id: i + 1, name, display_order: i + 1 }))).write();
