@@ -236,7 +236,7 @@ export default function StationViewPage({ isAdmin = false }) {
                     {station.dishes.length === 0 && (
                       <div style={{ color: 'var(--text-xdim)', fontSize: 12, padding: '8px 0' }}>Yemek yok</div>
                     )}
-                    {station.dishes.map(dish => {
+                    {[...station.dishes].sort((a, b) => a.name.localeCompare(b.name, 'tr')).map(dish => {
                       const matches     = recipeMatches[dish.name] || []
                       const hasExact    = matches.some(m => m.matchType === 'name_exact' || m.matchType === 'custom')
                       const hasNearby   = !hasExact && matches.length > 0

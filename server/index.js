@@ -64,8 +64,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'menuplan_secret_2024';
 
 if (!db.get('templates').size().value()) {
   const names = [
-    'ÇORBALAR', 'ARASICAK VE SEBZE YEMEKLERİ', 'GÜVEÇ KÖŞESİ',
-    'KESİM SUNUM KÖŞESİ', 'WOK TAVA YEMEKLERİ', 'PANE VE PATATES KÖŞESİ',
+    'ÇORBALAR', 'ARA SICAK & SEBZE YEMEKLERİ', 'GÜVEÇ KÖŞESİ',
+    'KESİM & SUNUM KÖŞESİ', 'WOK TAVA YEMEKLERİ', 'PANE VE PATATES KÖŞESİ',
     'BALIK IZGARA KÖŞESİ', 'MAKARNA SHOW İSTASYONU', 'IZGARA KÖŞESİ',
     'RUS MUTFAĞI KÖŞESİ', 'SALATA BARI', 'TATLILAR KÖŞESİ',
   ];
