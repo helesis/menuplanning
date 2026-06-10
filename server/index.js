@@ -2075,7 +2075,13 @@ async function scrapeHalDate(dateStr) {
   let innerData;
   try { innerData = JSON.parse(parsed.data); } catch(e) { throw new Error('İç veri parse edilemedi'); }
 
-  const products = innerData.products || [];
+  // Tarih doğrulaması: API, sorgulanan tarihte veri yoksa en yeni partiyi döndürüyor
+  // (örn. yanlış girilmiş gelecek tarihli kayıtlar). Sadece istenen tarihle
+  // eşleşen kayıtları kabul et — eşleşme yoksa "henüz yayınlanmamış" sayılır.
+  const wanted = dateStr.replace(/-/g, '');
+  const products = (innerData.products || []).filter(p =>
+    p.tarih && String(p.tarih).slice(0, 8) === wanted
+  );
   return products.map(p => ({
     name:  p.urun_adi || '',
     low:   typeof p.en_dusuk_fiyat  === 'string' ? p.en_dusuk_fiyat  : String(p.en_dusuk_fiyat_sayi  || ''),
@@ -2100,7 +2106,7 @@ async function syncHalDate(dateStr) {
   }
 }
 
-// Günlük otomatik çekme: her gün 11:05
+// Günlük otomatik çekme: her gün 12:30
 async function sendAlertEmail(alerts, date) {
   const apiKey = process.env.RESEND_API_KEY;
   const to     = process.env.RESEND_TO;
@@ -2160,7 +2166,7 @@ async function sendAlertEmail(alerts, date) {
   }
 }
 
-cron.schedule('30 11 * * *', async () => {
+cron.schedule('30 12 * * *', async () => {
   const today = toISO(new Date());
   console.log(`[HAL] Otomatik senkronizasyon: ${today}`);
   const result = await syncHalDate(today);
