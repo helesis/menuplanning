@@ -2114,7 +2114,7 @@ async function sendAlertEmail(alerts, date) {
   if (!apiKey || !to) { console.log('[HAL] E-posta atlanıyor: RESEND_API_KEY veya RESEND_TO eksik'); return; }
   if (!alerts.length) { console.log('[HAL] Uyarı yok, e-posta gönderilmeyecek'); return; }
 
-  const rows = alerts.map(a => `
+  const alertRow = a => `
     <tr>
       <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;font-weight:600">${a.name}</td>
       <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;color:#6b7280">${a.days}g ort.</td>
@@ -2126,7 +2126,20 @@ async function sendAlertEmail(alerts, date) {
         </span>
       </td>
       <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;color:#6b7280">${a.unit}</td>
-    </tr>`).join('');
+    </tr>`;
+
+  const groupHeader = (label, color, bg, count) => `
+    <tr>
+      <td colspan="6" style="padding:12px 14px 6px;font-weight:700;font-size:13px;color:${color};background:${bg}">
+        ${label} (${count})
+      </td>
+    </tr>`;
+
+  const ups   = alerts.filter(a => a.pct > 0);
+  const downs = alerts.filter(a => a.pct < 0);
+  const rows =
+    (ups.length   ? groupHeader('📈 Artanlar',  '#dc2626', '#fef2f2', ups.length)   + ups.map(alertRow).join('')   : '') +
+    (downs.length ? groupHeader('📉 Azalanlar', '#16a34a', '#f0fdf4', downs.length) + downs.map(alertRow).join('') : '');
 
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:680px;margin:0 auto;background:#fff">

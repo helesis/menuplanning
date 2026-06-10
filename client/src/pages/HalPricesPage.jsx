@@ -214,16 +214,26 @@ export default function HalPricesPage({ token, menus }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, marginBottom: 10, color: '#92400e' }}>
             <AlertTriangle size={14} /> Fiyat Değişim Uyarıları (7g ort. vs bugün, ≥%10)
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {alerts.map(a => (
-              <div key={a.name} style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
-                <span style={{ fontWeight: 600 }}>{a.name}</span>
-                <span style={{ color: 'var(--text-dim)', margin: '0 6px' }}>{a.days}g ort. {fmt(a.avg)} →</span>
-                <span style={{ fontWeight: 600 }}>{fmt(a.curHigh)}</span>
-                <span style={{ marginLeft: 6 }}><PctBadge pct={a.pct} /></span>
+          {[
+            { label: '📈 Artanlar', items: alerts.filter(a => a.pct > 0), color: '#dc2626', border: '#fecaca' },
+            { label: '📉 Azalanlar', items: alerts.filter(a => a.pct < 0), color: '#16a34a', border: '#bbf7d0' },
+          ].filter(g => g.items.length > 0).map(g => (
+            <div key={g.label} style={{ marginBottom: 10 }}>
+              <div style={{ fontWeight: 600, fontSize: 12, color: g.color, marginBottom: 6 }}>
+                {g.label} ({g.items.length})
               </div>
-            ))}
-          </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {g.items.map(a => (
+                  <div key={a.name} style={{ background: '#fff', border: `1px solid ${g.border}`, borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
+                    <span style={{ fontWeight: 600 }}>{a.name}</span>
+                    <span style={{ color: 'var(--text-dim)', margin: '0 6px' }}>{a.days}g ort. {fmt(a.avg)} →</span>
+                    <span style={{ fontWeight: 600 }}>{fmt(a.curHigh)}</span>
+                    <span style={{ marginLeft: 6 }}><PctBadge pct={a.pct} /></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
