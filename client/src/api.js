@@ -45,3 +45,14 @@ export const halAlerts     = (token)          => fetch('/api/hal/alerts',       
 export const halSync       = (token, date)    => fetch('/api/hal/sync',      { method: 'POST', headers: authH(token), body: JSON.stringify({ date }) }).then(r => r.json())
 export const halSyncRange  = (token, from, to)=> fetch('/api/hal/sync-range',{ method: 'POST', headers: authH(token), body: JSON.stringify({ from, to }) }).then(r => r.json())
 export const halTracked    = (token)          => fetch('/api/hal/tracked',               { headers: authH(token) }).then(r => r.json())
+
+// ── QR SİPARİŞLER (DigyBI) ────────────────────────────────────────────────────
+export const qrStatus     = (token) => fetch('/api/qr/status', { headers: authH(token) }).then(r => r.json())
+export const qrUnits      = (token) => fetch('/api/qr/units',  { headers: authH(token) }).then(r => r.json())
+export const qrSales      = (token, { kind, startDate, endDate, restId }) => {
+  const p = new URLSearchParams({ kind, startDate, endDate })
+  if (restId) p.set('restId', restId)
+  return fetch(`/api/qr/sales?${p}`, { headers: authH(token) }).then(r => r.json())
+}
+export const qrUnitTotals = (token, { startDate, endDate }) =>
+  fetch(`/api/qr/unit-totals?${new URLSearchParams({ startDate, endDate })}`, { headers: authH(token) }).then(r => r.json())

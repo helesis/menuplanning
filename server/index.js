@@ -2390,5 +2390,126 @@ app.get('/api/hal/alerts', authMiddleware, (req, res) => {
   res.json(alerts);
 });
 
+// ── DigyBI (QR/POS sipariş analizi) ──────────────────────────────────────────
+// Kimlik bilgileri SADECE sunucuda (.env). Token cache'lenir, dataset/execute
+// proxy'lenir; client yalnızca aşağıdaki /api/qr/* uçlarını çağırır.
+const DIGY = {
+  sso:  'https://digysso.digyglobal.net/oauth2/token',
+  base: 'https://v2-api-bi.digyglobal.net/digybi/v2',
+  clientId:     process.env.DIGYBI_CLIENT_ID     || '',
+  clientSecret: process.env.DIGYBI_CLIENT_SECRET || '',
+  scope:        process.env.DIGYBI_SCOPE         || '',  // boş bırak: SSO 'read' vb. scope'ları reddediyor
+  companyId:    parseInt(process.env.DIGYBI_COMPANY_ID || '0', 10),
+};
+let digyToken = { value: null, exp: 0 };
+let digyTokenInflight = null;
+
+async function digyGetToken() {
+  if (digyToken.value && Date.now() < digyToken.exp - 60000) return digyToken.value;
+  if (!DIGY.clientId || !DIGY.clientSecret)
+    throw new Error('DigyBI kimlik bilgileri eksik (.env: DIGYBI_CLIENT_ID / DIGYBI_CLIENT_SECRET)');
+  if (digyTokenInflight) return digyTokenInflight; // eşzamanlı isteklerde tek token çağrısı
+  digyTokenInflight = (async () => {
+    const basic = Buffer.from(`${DIGY.clientId}:${DIGY.clientSecret}`).toString('base64');
+    const body = new URLSearchParams({ grant_type: 'client_credentials' });
+    if (DIGY.scope) body.append('scope', DIGY.scope);
+    const r = await fetch(DIGY.sso, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basic}` },
+      body,
+    });
+    if (!r.ok) throw new Error(`DigyBI token alınamadı (${r.status})`);
+    const j = await r.json();
+    digyToken = { value: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+    return digyToken.value;
+  })().finally(() => { digyTokenInflight = null; });
+  return digyTokenInflight;
+}
+
+// execute sonuçları kısa süreli cache'lenir (analiz read-heavy; 16 çağrıyı hızlandırır)
+const digyCache = new Map(); // key -> { exp, data }
+const DIGY_TTL = 5 * 60 * 1000;
+
+async function digyExecute(name, parameters) {
+  const key = name + ':' + JSON.stringify(parameters);
+  const c = digyCache.get(key);
+  if (c && Date.now() < c.exp) return c.data;
+  const token = await digyGetToken();
+  const r = await fetch(`${DIGY.base}/dataset/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ company: { id: DIGY.companyId }, name, parameters }),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`DigyBI ${name} hata ${r.status}: ${t.slice(0, 200)}`);
+  }
+  // execute yanıtı sarmalı: { ..., result: [...], ... } — asıl veri .result'ta
+  const j = await r.json();
+  const data = Array.isArray(j) ? j : (j.result || []);
+  digyCache.set(key, { exp: Date.now() + DIGY_TTL, data });
+  return data;
+}
+
+const qrToNum = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? 0 : n; };
+const qrIsISO = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+
+// Yapılandırma durumu (client "kimlik eksik" uyarısı için)
+app.get('/api/qr/status', authMiddleware, (req, res) => {
+  res.json({ configured: !!(DIGY.clientId && DIGY.clientSecret && DIGY.companyId) });
+});
+
+// Şube (unit/restaurant) listesi
+app.get('/api/qr/units', authMiddleware, async (req, res) => {
+  try {
+    const rows = await digyExecute('digypos_company_units', { company: DIGY.companyId });
+    res.json((rows || []).map(r => ({ id: r.id, name: r.name })));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Satışlar — kind=food|drink, restId verilirse şube, yoksa şirket geneli
+app.get('/api/qr/sales', authMiddleware, async (req, res) => {
+  const { kind = 'food', startDate, endDate, restId } = req.query;
+  if (!qrIsISO(startDate) || !qrIsISO(endDate))
+    return res.status(400).json({ error: 'startDate/endDate yyyy-MM-dd olmalı' });
+  if (!['food', 'drink'].includes(kind))
+    return res.status(400).json({ error: 'kind food|drink olmalı' });
+  try {
+    let name, parameters;
+    if (restId) {
+      name = `digypos_${kind}_company_unit_sales`;
+      parameters = { restId: parseInt(restId, 10), startDate, endDate };
+    } else {
+      name = `digypos_${kind}_company_sales`;
+      parameters = { company: DIGY.companyId, startDate, endDate };
+    }
+    const rows = await digyExecute(name, parameters);
+    res.json((rows || [])
+      .map(r => ({ name: r.name, value: qrToNum(r.value) }))
+      .sort((a, b) => b.value - a.value));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Şube karşılaştırması — her şube için yemek+içecek toplamı
+app.get('/api/qr/unit-totals', authMiddleware, async (req, res) => {
+  const { startDate, endDate } = req.query;
+  if (!qrIsISO(startDate) || !qrIsISO(endDate))
+    return res.status(400).json({ error: 'startDate/endDate yyyy-MM-dd olmalı' });
+  try {
+    const units = await digyExecute('digypos_company_units', { company: DIGY.companyId });
+    const sum = arr => (arr || []).reduce((s, r) => s + qrToNum(r.value), 0);
+    // Tüm şubeler paralel (ardışık 16 çağrı yerine) — token cache + execute cache ile
+    const out = await Promise.all((units || []).map(async u => {
+      const [food, drink] = await Promise.all([
+        digyExecute('digypos_food_company_unit_sales', { restId: u.id, startDate, endDate }).catch(() => []),
+        digyExecute('digypos_drink_company_unit_sales', { restId: u.id, startDate, endDate }).catch(() => []),
+      ]);
+      return { id: u.id, name: u.name, food: sum(food), drink: sum(drink), total: sum(food) + sum(drink) };
+    }));
+    out.sort((a, b) => b.total - a.total);
+    res.json(out);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => console.log(`Sunucu http://0.0.0.0:${PORT} adresinde calisiyor`));
