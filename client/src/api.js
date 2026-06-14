@@ -56,3 +56,5 @@ export const qrSales      = (token, { kind, startDate, endDate, restId }) => {
 }
 export const qrUnitTotals = (token, { startDate, endDate }) =>
   fetch(`/api/qr/unit-totals?${new URLSearchParams({ startDate, endDate })}`, { headers: authH(token) }).then(r => r.json())
+export const qrBreakdown  = (token, { startDate, endDate }) =>
+  fetch(`/api/qr/breakdown?${new URLSearchParams({ startDate, endDate })}`, { headers: authH(token) }).then(r => r.json())

@@ -2467,6 +2467,25 @@ app.get('/api/qr/units', authMiddleware, async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+// Tüm kırılım — tek çağrı: food+drink, restId/restName/ürün/adet/tarih/saat satırları.
+// Toplama (KPI, saatlik, günlük, şube, ürün) client tarafında yapılır.
+app.get('/api/qr/breakdown', authMiddleware, async (req, res) => {
+  const { startDate, endDate } = req.query;
+  if (!qrIsISO(startDate) || !qrIsISO(endDate))
+    return res.status(400).json({ error: 'startDate/endDate yyyy-MM-dd olmalı' });
+  try {
+    const [food, drink] = await Promise.all([
+      digyExecute('digypos_food_company_unit_date_hour',  { company: DIGY.companyId, startDate, endDate }),
+      digyExecute('digypos_drink_company_unit_date_hour', { company: DIGY.companyId, startDate, endDate }),
+    ]);
+    const norm = (rows, kind) => (rows || []).map(r => ({
+      restId: r.restId, restName: r.restName, name: r.name,
+      value: qrToNum(r.value), date: r.date, hour: r.hour, kind,
+    }));
+    res.json([...norm(food, 'food'), ...norm(drink, 'drink')]);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // Satışlar — kind=food|drink, restId verilirse şube, yoksa şirket geneli
 app.get('/api/qr/sales', authMiddleware, async (req, res) => {
   const { kind = 'food', startDate, endDate, restId } = req.query;
