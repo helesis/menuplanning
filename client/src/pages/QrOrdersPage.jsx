@@ -16,6 +16,11 @@ function topBy(rows, keyFn, n) {
   return n ? out.slice(0, n) : out
 }
 
+// azalan sıralı listeden en çok N / en az N (en az: topN dışında kalanların en küçüğü, artan)
+const LIST_N = 15
+const top7 = a => a.slice(0, LIST_N)
+const bottom7 = a => a.slice(LIST_N).slice(-LIST_N).reverse()
+
 function Card({ children, style }) {
   return <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 16, ...style }}>{children}</div>
 }
@@ -106,8 +111,8 @@ function HourlyChart({ rows }) {
       const m = r.kind === 'food' ? arr[h].fm : arr[h].dm
       m.set(r.name, (m.get(r.name) || 0) + r.value)
     }
-    const top = m => [...m.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10)
-    return arr.map(h => ({ total: h.total, food: top(h.fm), drink: top(h.dm) }))
+    const sortAll = m => [...m.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+    return arr.map(h => ({ total: h.total, food: sortAll(h.fm), drink: sortAll(h.dm) }))
   }, [rows])
   const max = Math.max(...perHour.map(h => h.total), 1)
   const leftPct = hover != null ? Math.min(Math.max((hover + 0.5) / 24 * 100, 26), 74) : 0
@@ -131,16 +136,24 @@ function HourlyChart({ rows }) {
       {hover != null && perHour[hover].total > 0 && (
         <div style={{
           position: 'absolute', top: 150, left: `${leftPct}%`, transform: 'translateX(-50%)',
-          zIndex: 20, width: 380, maxWidth: '92%',
+          zIndex: 20, width: 440, maxWidth: '94%',
           background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
           boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,.18))', padding: 12,
         }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
             {String(hover).padStart(2, '0')}:00 — {String((hover + 1) % 24).padStart(2, '0')}:00 · toplam {nf(perHour[hover].total)}
           </div>
           <div style={{ display: 'flex', gap: 14 }}>
-            <MiniTop title="🍽 Yemek (top 10)" color="var(--blue)" items={perHour[hover].food} />
-            <MiniTop title="🥤 İçecek (top 10)" color="var(--gold)" items={perHour[hover].drink} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <MiniTop title="🍽 En çok 15 yemek" color="var(--blue)" items={top7(perHour[hover].food)} />
+              <div style={{ height: 10 }} />
+              <MiniTop title="En az 15 yemek" color="var(--text-dim)" items={bottom7(perHour[hover].food)} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <MiniTop title="🥤 En çok 15 içecek" color="var(--gold)" items={top7(perHour[hover].drink)} />
+              <div style={{ height: 10 }} />
+              <MiniTop title="En az 15 içecek" color="var(--text-dim)" items={bottom7(perHour[hover].drink)} />
+            </div>
           </div>
         </div>
       )}
