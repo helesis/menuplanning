@@ -75,6 +75,79 @@ function VBars({ bars, color, labelEvery = 1 }) {
   )
 }
 
+// Mini top liste (tooltip içi)
+function MiniTop({ title, color, items }) {
+  const m = Math.max(...items.map(i => i.value), 1)
+  return (
+    <div style={{ flex: 1, minWidth: 160 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>{title}</div>
+      {items.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-xdim)' }}>—</div>}
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+          <div style={{ width: 110, fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.name}>{it.name}</div>
+          <div style={{ flex: 1, height: 9, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: `${(it.value / m) * 100}%`, height: '100%', background: color, borderRadius: 3, minWidth: 2 }} />
+          </div>
+          <div style={{ width: 34, textAlign: 'right', fontSize: 11, fontWeight: 600 }}>{nf(it.value)}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Saatlik grafik — bara hover edince o saatin top yemek/içecek'i yan yana
+function HourlyChart({ rows }) {
+  const [hover, setHover] = useState(null)
+  const perHour = useMemo(() => {
+    const arr = Array.from({ length: 24 }, () => ({ total: 0, fm: new Map(), dm: new Map() }))
+    for (const r of rows) {
+      const h = parseInt(String(r.hour)); if (h < 0 || h > 23) continue
+      arr[h].total += r.value
+      const m = r.kind === 'food' ? arr[h].fm : arr[h].dm
+      m.set(r.name, (m.get(r.name) || 0) + r.value)
+    }
+    const top = m => [...m.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10)
+    return arr.map(h => ({ total: h.total, food: top(h.fm), drink: top(h.dm) }))
+  }, [rows])
+  const max = Math.max(...perHour.map(h => h.total), 1)
+  const leftPct = hover != null ? Math.min(Math.max((hover + 0.5) / 24 * 100, 26), 74) : 0
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 140 }}>
+        {perHour.map((h, i) => (
+          <div key={i}
+            onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0, cursor: h.total ? 'pointer' : 'default' }}
+            title={h.total ? '' : undefined}>
+            <div style={{ fontSize: 10, color: 'var(--text-xdim)', height: 12 }}>{h.total ? nf(h.total) : ''}</div>
+            <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', height: 90 }}>
+              <div style={{ width: '100%', height: `${(h.total / max) * 100}%`, background: 'var(--gold)', borderRadius: '3px 3px 0 0', minHeight: h.total ? 2 : 0, opacity: hover == null || hover === i ? 1 : 0.4, transition: 'opacity .12s' }} />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{i % 2 === 0 ? i : ''}</div>
+          </div>
+        ))}
+      </div>
+      {hover != null && perHour[hover].total > 0 && (
+        <div style={{
+          position: 'absolute', top: 150, left: `${leftPct}%`, transform: 'translateX(-50%)',
+          zIndex: 20, width: 380, maxWidth: '92%',
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,.18))', padding: 12,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+            {String(hover).padStart(2, '0')}:00 — {String((hover + 1) % 24).padStart(2, '0')}:00 · toplam {nf(perHour[hover].total)}
+          </div>
+          <div style={{ display: 'flex', gap: 14 }}>
+            <MiniTop title="🍽 Yemek (top 10)" color="var(--blue)" items={perHour[hover].food} />
+            <MiniTop title="🥤 İçecek (top 10)" color="var(--gold)" items={perHour[hover].drink} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function QrOrdersPage({ token }) {
   const [from, setFrom] = useState(daysAgo(7))
   const [to, setTo] = useState(daysAgo(0))
@@ -193,8 +266,8 @@ export default function QrOrdersPage({ token }) {
 
       {/* Saatlik */}
       <Card style={{ marginBottom: 16 }}>
-        <SectionTitle icon={<Clock size={16} style={{ color: 'var(--gold)' }} />} note={scopeLabel}>Saatlik Dağılım (00–23)</SectionTitle>
-        <VBars bars={hourly} color="var(--gold)" labelEvery={2} />
+        <SectionTitle icon={<Clock size={16} style={{ color: 'var(--gold)' }} />} note={`${scopeLabel} · bara gelince o saatin top ürünleri`}>Saatlik Dağılım (00–23)</SectionTitle>
+        <HourlyChart rows={scoped} />
       </Card>
 
       {/* Günlük */}
