@@ -2454,6 +2454,55 @@ async function digyExecute(name, parameters) {
 const qrToNum = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? 0 : n; };
 const qrIsISO = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 
+// ── QR kırılım cache: geçmiş günler diske yazılır (bir daha API'den çekilmez),
+//    sadece bugün canlı çekilir. Gün başına bir JSON dosyası. ───────────────────
+const QR_CACHE_DIR = path.join(__dirname, 'qr-cache');
+try { fs.mkdirSync(QR_CACHE_DIR, { recursive: true }); } catch {}
+const qrCacheFile = d => path.join(QR_CACHE_DIR, `${d}.json`);
+// Bugün otelin saat dilimine göre (Europe/Istanbul) — en-CA → yyyy-MM-dd
+const qrToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
+function qrEnumDays(start, end) {
+  const out = []; const cur = new Date(start + 'T00:00:00Z'); const last = new Date(end + 'T00:00:00Z');
+  while (cur <= last) { out.push(cur.toISOString().slice(0, 10)); cur.setUTCDate(cur.getUTCDate() + 1); }
+  return out;
+}
+
+// food+drink date_hour'ı tek aralıkta çekip normalize eder
+async function digyDateHour(startDate, endDate) {
+  const [food, drink] = await Promise.all([
+    digyExecute('digypos_food_company_unit_date_hour',  { company: DIGY.companyId, startDate, endDate }),
+    digyExecute('digypos_drink_company_unit_date_hour', { company: DIGY.companyId, startDate, endDate }),
+  ]);
+  const norm = (rows, kind) => (rows || []).map(r => ({
+    restId: r.restId, restName: r.restName, name: r.name,
+    value: qrToNum(r.value), date: r.date, hour: r.hour, kind,
+  }));
+  return [...norm(food, 'food'), ...norm(drink, 'drink')];
+}
+
+// Geçmiş günler cache'ten (yoksa bir kez çekip yazılır), bugün canlı.
+async function qrBreakdownCached(startDate, endDate) {
+  const today = qrToday();
+  const days = qrEnumDays(startDate, endDate).filter(d => d <= today); // gelecek günleri yok say
+  const past = days.filter(d => d < today);
+  const missing = past.filter(d => !fs.existsSync(qrCacheFile(d)));
+  if (missing.length) {
+    // eksik geçmiş günlerin tamamını tek çağrıda çek, güne böl, yaz
+    const rows = await digyDateHour(missing[0], missing[missing.length - 1]);
+    const byDate = new Map();
+    for (const r of rows) { if (!byDate.has(r.date)) byDate.set(r.date, []); byDate.get(r.date).push(r); }
+    for (const d of missing) {
+      try { fs.writeFileSync(qrCacheFile(d), JSON.stringify(byDate.get(d) || [])); } catch (e) { console.error('[QR] cache yazılamadı', d, e.message); }
+    }
+  }
+  let all = [];
+  for (const d of past) {
+    try { all = all.concat(JSON.parse(fs.readFileSync(qrCacheFile(d), 'utf8'))); } catch {}
+  }
+  if (days.includes(today)) all = all.concat(await digyDateHour(today, today));
+  return all;
+}
+
 // Yapılandırma durumu (client "kimlik eksik" uyarısı için)
 app.get('/api/qr/status', authMiddleware, (req, res) => {
   res.json({ configured: !!(DIGY.clientId && DIGY.clientSecret && DIGY.companyId) });
@@ -2474,15 +2523,7 @@ app.get('/api/qr/breakdown', authMiddleware, async (req, res) => {
   if (!qrIsISO(startDate) || !qrIsISO(endDate))
     return res.status(400).json({ error: 'startDate/endDate yyyy-MM-dd olmalı' });
   try {
-    const [food, drink] = await Promise.all([
-      digyExecute('digypos_food_company_unit_date_hour',  { company: DIGY.companyId, startDate, endDate }),
-      digyExecute('digypos_drink_company_unit_date_hour', { company: DIGY.companyId, startDate, endDate }),
-    ]);
-    const norm = (rows, kind) => (rows || []).map(r => ({
-      restId: r.restId, restName: r.restName, name: r.name,
-      value: qrToNum(r.value), date: r.date, hour: r.hour, kind,
-    }));
-    res.json([...norm(food, 'food'), ...norm(drink, 'drink')]);
+    res.json(await qrBreakdownCached(startDate, endDate));
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
