@@ -162,7 +162,7 @@ function HourlyChart({ rows }) {
 }
 
 export default function QrOrdersPage({ token }) {
-  const [from, setFrom] = useState(daysAgo(7))
+  const [from, setFrom] = useState(daysAgo(0))
   const [to, setTo] = useState(daysAgo(0))
   const [unitId, setUnitId] = useState('')
   const [rows, setRows] = useState([])
