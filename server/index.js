@@ -2430,10 +2430,9 @@ async function digyGetToken() {
 const digyCache = new Map(); // key -> { exp, data }
 const DIGY_TTL = 5 * 60 * 1000;
 
-async function digyExecute(name, parameters) {
+async function digyExecute(name, parameters, fresh = false) {
   const key = name + ':' + JSON.stringify(parameters);
-  const c = digyCache.get(key);
-  if (c && Date.now() < c.exp) return c.data;
+  if (!fresh) { const c = digyCache.get(key); if (c && Date.now() < c.exp) return c.data; }
   const token = await digyGetToken();
   const r = await fetch(`${DIGY.base}/dataset/execute`, {
     method: 'POST',
@@ -2467,11 +2466,11 @@ function qrEnumDays(start, end) {
   return out;
 }
 
-// food+drink date_hour'ı tek aralıkta çekip normalize eder
-async function digyDateHour(startDate, endDate) {
+// food+drink date_hour'ı tek aralıkta çekip normalize eder (fresh=true: 5dk cache'i atla)
+async function digyDateHour(startDate, endDate, fresh = false) {
   const [food, drink] = await Promise.all([
-    digyExecute('digypos_food_company_unit_date_hour',  { company: DIGY.companyId, startDate, endDate }),
-    digyExecute('digypos_drink_company_unit_date_hour', { company: DIGY.companyId, startDate, endDate }),
+    digyExecute('digypos_food_company_unit_date_hour',  { company: DIGY.companyId, startDate, endDate }, fresh),
+    digyExecute('digypos_drink_company_unit_date_hour', { company: DIGY.companyId, startDate, endDate }, fresh),
   ]);
   const norm = (rows, kind) => (rows || []).map(r => ({
     restId: r.restId, restName: r.restName, name: r.name,
@@ -2502,6 +2501,26 @@ async function qrBreakdownCached(startDate, endDate) {
   if (days.includes(today)) all = all.concat(await digyDateHour(today, today));
   return all;
 }
+
+// Bir günü kesinleştirip cache'e yaz (taze çek — 5dk cache'i atla)
+async function qrFinalizeDay(d) {
+  const rows = await digyDateHour(d, d, true);
+  const dayRows = rows.filter(r => r.date === d);
+  fs.writeFileSync(qrCacheFile(d), JSON.stringify(dayRows));
+  return dayRows.length;
+}
+
+// Her gece 00:10 (Europe/Istanbul) dünü kesinleştirip yaz — gün içi ilk erişim gecikmesini önler.
+// Sunucu o saatte kapalıysa lazy cache yine de ilk erişimde dünü çeker (yedek).
+cron.schedule('10 0 * * *', async () => {
+  if (!DIGY.clientId || !DIGY.companyId) return;
+  const dt = new Date(qrToday() + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - 1);
+  const yest = dt.toISOString().slice(0, 10);
+  try {
+    const n = await qrFinalizeDay(yest);
+    console.log(`[QR] dün kesinleştirildi: ${yest} (${n} satır)`);
+  } catch (e) { console.error('[QR] gece cache hatası:', e.message); }
+}, { timezone: 'Europe/Istanbul' });
 
 // Yapılandırma durumu (client "kimlik eksik" uyarısı için)
 app.get('/api/qr/status', authMiddleware, (req, res) => {
