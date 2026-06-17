@@ -2131,7 +2131,7 @@ app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
         liveCount: det.filter(r => r.source === 'live' || r.source === 'manual').length,
       });
     }
-    costed.sort((a, b) => (b.total || 0) - (a.total || 0));
+    costed.sort((a, b) => (b.per100g == null ? -1 : b.per100g) - (a.per100g == null ? -1 : a.per100g));
     return {
       id: m.id, theme: m.theme, day_of_week: m.day_of_week, meal_type: m.meal_type,
       dishCount: dishes.length, costedCount: costed.length,

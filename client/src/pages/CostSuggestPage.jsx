@@ -149,8 +149,8 @@ export default function CostSuggestPage() {
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--gold)' }}>{fmt(it.total)} ₺</div>
-                  <div style={{ fontSize: 10, color: coverageColor(it.coverage) }}>kapsama %{it.coverage}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--gold)' }}>{fmt(it.per100g)} <span style={{ fontSize: 9, fontWeight: 500 }}>₺/100g</span></div>
+                  <div style={{ fontSize: 10, color: coverageColor(it.coverage) }}>kapsama %{it.coverage} · {fmt(it.total)}₺</div>
                 </div>
                 <ChevronRight size={14} style={{ color: 'var(--text-xdim)', flexShrink: 0 }} />
               </div>
