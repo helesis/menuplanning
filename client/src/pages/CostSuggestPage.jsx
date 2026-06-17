@@ -271,9 +271,9 @@ export default function CostSuggestPage() {
                               <Link2 size={10} /> eşlendi
                             </button>
                           )}
-                          {!(row.fiyat > 0) && (
-                            <button onClick={() => openMap(row.ingredient)} title="Cost listesinden ürün seçerek fiyat eşleştir" style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 5, cursor: 'pointer', padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                              <Star size={11} fill="#f59e0b" stroke="#f59e0b" /> fiyat yok · eşle
+                          {row.source !== 'live' && row.source !== 'manual' && (
+                            <button onClick={() => openMap(row.ingredient)} title="Cost canlı listesinden ürün seçerek canlı fiyata eşle" style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 5, cursor: 'pointer', padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              <Star size={11} fill="#f59e0b" stroke="#f59e0b" /> {row.fiyat > 0 ? 'statik · canlıya eşle' : 'fiyat yok · eşle'}
                             </button>
                           )}
                         </td>
