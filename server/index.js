@@ -2001,6 +2001,125 @@ app.post('/api/cost-oneri/eslestir', (req, res) => {
   });
 });
 
+// ─── AI alternatif önerileri (tarif AI'dan, fiyat cost'tan) ───
+// Canlı cost listesinde isim eşleştir (tam → içerir → kelime skoru)
+function findLivePrice(name) {
+  if (!name) return { stok: null, fiyatKg: null };
+  const key = name.trim().toUpperCase();
+  if (livePriceMap[key] != null) return { stok: key, fiyatKg: livePriceMap[key] };
+  const keys = Object.keys(livePriceMap);
+  let cand = key.length >= 3 ? keys.filter(k => k.includes(key)) : [];
+  if (cand.length) {
+    cand.sort((a, b) => a.length - b.length);
+  } else {
+    // genel/ucuz kelimeler eşleştirmeyi yanlış yönlendirmesin (tuzlu su → hamur işi vb.)
+    const STOP = new Set(['SU', 'TUZ', 'TUZLU', 'SOS', 'TANE', 'TOZ', 'SADE', 'TAZE', 'KURU', 'BUYUK', 'KUCUK', 'ADET', 'DILIM', 'SOGUK', 'SICAK']);
+    const words = key.split(/[ \/]+/).filter(w => w.length >= 4 && !STOP.has(w));
+    if (words.length) {
+      const scored = keys.map(k => ({ k, hits: words.filter(w => k.includes(w)).length }))
+        .filter(x => x.hits > 0).sort((a, b) => b.hits - a.hits || a.k.length - b.k.length);
+      if (scored.length) cand = [scored[0].k];
+    }
+  }
+  if (cand.length) return { stok: cand[0], fiyatKg: livePriceMap[cand[0]] };
+  return { stok: null, fiyatKg: null };
+}
+
+// Serbest malzeme listesini (AI çıktısı) cost canlı fiyatlarıyla fiyatla
+function priceIngredientList(items) {
+  let total = 0, totalGrams = 0, priced = 0;
+  const detail = (items || []).map(it => {
+    const name = (it.name || it.ingredient || '').trim();
+    const miktar = Number(it.miktar) || 0;
+    const birim = it.birim || 'g';
+    const factor = unitToKgFactor(birim);
+    const { stok, fiyatKg } = findLivePrice(name);
+    let fiyat = 0, maliyet = 0;
+    if (fiyatKg != null && fiyatKg > 0) {
+      fiyat = factor != null ? fiyatKg * factor : fiyatKg;
+      maliyet = fiyat * miktar;
+      priced++;
+    }
+    total += maliyet;
+    const b = birim.trim().toLowerCase();
+    if      (b === 'kg' || b === 'kilogram')                            totalGrams += miktar * 1000;
+    else if (b === 'g'  || b === 'gr' || b === 'gram')                  totalGrams += miktar;
+    else if (b === 'mg')                                                totalGrams += miktar / 1000;
+    else if (b === 'l'  || b === 'lt' || b === 'litre' || b === 'liter') totalGrams += miktar * 1000;
+    else if (b === 'cl')                                                totalGrams += miktar * 10;
+    else if (b === 'ml')                                                totalGrams += miktar;
+    return { name, miktar, birim, matchedStok: stok, maliyet: Math.round(maliyet * 100) / 100 };
+  });
+  return {
+    total: Math.round(total * 100) / 100,
+    totalGrams: Math.round(totalGrams * 100) / 100,
+    per100g: totalGrams > 0 ? Math.round((total * 100 / totalGrams) * 100) / 100 : null,
+    coverage: (items || []).length ? Math.round(priced / items.length * 100) : 0,
+    detail,
+  };
+}
+
+const _aiAltCache = new Map(); // y_no -> { at, data }
+
+app.post('/api/cost-oneri/ai-alternatif', async (req, res) => {
+  const y_no = parseInt(req.body.y_no);
+  const force = !!req.body.force;
+  const product = recipeProducts.find(p => p.y_no === y_no);
+  if (!product) return res.status(404).json({ error: 'Reçete bulunamadı' });
+  const cached = _aiAltCache.get(y_no);
+  if (cached && !force && Date.now() - cached.at < 24 * 60 * 60 * 1000) return res.json(cached.data);
+
+  const refCost = calcRecipeCost(y_no, { guardStatic: true });
+  const drivers = [...(refCost.detail || [])].sort((a, b) => b.maliyet - a.maliyet).slice(0, 5).map(r => r.ingredient).filter(Boolean);
+
+  let aiText;
+  try {
+    const msg = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: `Sen bir Türk otel/restoran mutfağı menü maliyet uzmanısın.
+"${product.adi}" pahalı bir menü kalemi (bölüm: ${product.bolum}${product.tur ? ', tür: ' + product.tur : ''}).
+Bunun yerine açık büfede sunulabilecek, AYNI ROLDE (aynı kurs/öğün, benzer doyuruculuk ve sunum) ama daha UYGUN MALİYETLİ 10 GERÇEK ve BİLİNEN alternatif yemek öner.
+KURALLAR:
+- HELAL mutfak: domuz, jambon, şarap, alkol vb. ASLA kullanma veya önerme.
+- Sadece Türkiye otel mutfağında GERÇEKTEN bilinen yemekler öner; uydurma yemek adı ya da gerçek olmayan malzeme verme.
+- Orijinal yemeğin "+sıfat" türevi değil, GERÇEKTEN FARKLI ve daha ucuz yemekler öner.
+- Bu yemekteki yüksek maliyet kalemleri: ${drivers.join(', ') || '—'}. Bu pahalı bileşenleri daha ekonomik muadilleriyle ikame et.
+- Her alternatif için ~10 kişilik GERÇEKÇİ malzeme listesi ver (Türkçe, BÜYÜK HARF malzeme adları; miktar + birim: g/kg/lt/ml/adet).
+SADECE JSON döndür, başka açıklama yok:
+{"alternatives":[{"name":"YEMEK ADI","ingredients":[{"name":"MALZEME","miktar":500,"birim":"g"}]}]}`,
+      }],
+    });
+    aiText = msg.content[0].text.trim();
+  } catch (e) {
+    return res.status(502).json({ error: 'AI çağrısı başarısız: ' + e.message });
+  }
+
+  let alts = [];
+  try {
+    const json = JSON.parse(aiText.replace(/```json\n?/g, '').replace(/```\n?/g, ''));
+    alts = json.alternatives || [];
+  } catch (e) { return res.status(500).json({ error: 'AI yanıtı parse edilemedi' }); }
+
+  const refPer100 = refCost.per100g;
+  const alternatives = alts.map(a => {
+    const p = priceIngredientList(a.ingredients || []);
+    const perPortionEst = p.total != null ? Math.round(p.total / 10 * 100) / 100 : null; // ~10 kişilik
+    const savingPct = (refPer100 && p.per100g != null && refPer100 > 0) ? Math.round((1 - p.per100g / refPer100) * 100) : null;
+    return { name: a.name, per100g: p.per100g, totalEst: p.total, perPortionEst, coverage: p.coverage, savingPct, ingredients: p.detail };
+  }).sort((x, y) => (x.per100g == null ? Infinity : x.per100g) - (y.per100g == null ? Infinity : y.per100g));
+
+  const data = {
+    ref: { y_no, adi: product.adi, bolum: product.bolum, tur: product.tur, per100g: refPer100, total: refCost.total },
+    generatedAt: new Date().toISOString(),
+    alternatives,
+  };
+  _aiAltCache.set(y_no, { at: Date.now(), data });
+  res.json(data);
+});
+
 // GET /api/ingredients — malzeme listesi (arama, relevance sıralı)
 app.get('/api/ingredients', (req, res) => {
   const raw = (req.query.q || '').trim();

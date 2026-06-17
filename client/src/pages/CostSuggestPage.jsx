@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, ChevronRight, X, TrendingDown, ArrowDownRight, Coins, CircleDollarSign, Star, Link2, Unlink } from 'lucide-react'
+import { Search, ChevronRight, X, TrendingDown, ArrowDownRight, Coins, CircleDollarSign, Star, Link2, Unlink, Sparkles, ChevronDown } from 'lucide-react'
 
 const BOLUM_COLORS = {
   'ANA RESTORAN': { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
@@ -54,6 +54,11 @@ export default function CostSuggestPage() {
   const [mapResults, setMapResults] = useState([])
   const [mapBusy, setMapBusy]     = useState(false)
   const mapDebounce = useRef(null)
+  // AI alternatifleri
+  const [aiAlts, setAiAlts]       = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiErr, setAiErr]         = useState(null)
+  const [aiOpen, setAiOpen]       = useState(null)   // açık alternatifin index'i (malzeme detayı)
 
   useEffect(() => {
     fetch('/api/cost-oneri/meta').then(r => r.json()).then(setMeta).catch(() => {})
@@ -86,6 +91,7 @@ export default function CostSuggestPage() {
   const openDetail = (y_no) => {
     setSelected(y_no)
     setDetail(null); setAlts(null)
+    setAiAlts(null); setAiErr(null); setAiOpen(null)
     setDetailLoading(true)
     fetch(`/api/recipes/${y_no}`)
       .then(r => r.json())
@@ -95,6 +101,19 @@ export default function CostSuggestPage() {
   }
 
   const changeScope = (s) => { setAltScope(s); if (selected) loadAlts(selected, s) }
+
+  // AI alternatif üret (talep üzerine; cache'li)
+  const genAiAlts = (force = false) => {
+    if (!selected) return
+    setAiLoading(true); setAiErr(null)
+    fetch('/api/cost-oneri/ai-alternatif', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ y_no: selected, force }),
+    })
+      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Hata'); return d })
+      .then(d => { setAiAlts(d); setAiLoading(false) })
+      .catch(e => { setAiErr(e.message); setAiLoading(false) })
+  }
 
   // ── Elle eşleştirme ──
   const openMap = (ingredient) => { setMapIng(ingredient); setMapQ(ingredient); setMapResults([]) }
@@ -275,6 +294,89 @@ export default function CostSuggestPage() {
                 ) : (
                   <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-dim)', fontSize: 12 }}>
                     Bu reçeteden daha ucuz benzer reçete bulunamadı — {altScope === 'tur' ? 'aynı türde' : 'aynı bölümde'} en uygunlardan biri olabilir. 👍
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AI ucuz alternatifler (tarif AI'dan, fiyat cost'tan) */}
+            {detail && (
+              <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16, border: '1px solid var(--gold-border)' }}>
+                <div style={{ padding: '10px 16px', background: 'var(--gold-bg)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Sparkles size={15} style={{ color: 'var(--gold)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>AI ile uygun maliyetli alternatifler</span>
+                  {aiAlts && (
+                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', color: 'var(--text-dim)' }} disabled={aiLoading} onClick={() => genAiAlts(true)}>
+                      ↻ Yeniden üret
+                    </button>
+                  )}
+                </div>
+
+                {!aiAlts && !aiLoading && !aiErr && (
+                  <div style={{ padding: 16, textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
+                      Bu yemek yerine sunulabilecek <strong>10 daha ucuz alternatif</strong> yemeği AI üretsin; fiyatlar cost'tan hesaplanır.
+                    </div>
+                    <button className="btn btn-sm" style={{ background: 'var(--gold)', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => genAiAlts(false)}>
+                      <Sparkles size={14} /> Alternatif üret
+                    </button>
+                  </div>
+                )}
+                {aiLoading && <div className="loading"><div className="spinner" /> AI alternatifleri üretiyor… (~5-15 sn)</div>}
+                {aiErr && (
+                  <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#ef4444' }}>
+                    {aiErr} · <button className="btn btn-ghost btn-sm" onClick={() => genAiAlts(true)}>tekrar dene</button>
+                  </div>
+                )}
+
+                {aiAlts && aiAlts.alternatives && (
+                  <table style={{ width: '100%', fontSize: 12 }}>
+                    <tbody>
+                      {aiAlts.alternatives.map((a, i) => {
+                        const refP = aiAlts.ref.per100g
+                        return (
+                          <React.Fragment key={i}>
+                            <tr onClick={() => setAiOpen(aiOpen === i ? null : i)} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                              <td style={{ padding: '9px 8px 9px 16px', width: 18 }}>
+                                <ChevronDown size={13} style={{ color: 'var(--text-xdim)', transform: aiOpen === i ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                              </td>
+                              <td style={{ padding: '9px 8px', color: 'var(--text)', fontWeight: 500 }}>
+                                {a.name}
+                                <span style={{ marginLeft: 6, fontSize: 10, color: coverageColor(a.coverage) }}>kapsama %{a.coverage}</span>
+                              </td>
+                              <td style={{ padding: '9px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--gold)', fontWeight: 600 }}>
+                                {a.per100g != null ? `${fmt(a.per100g)} ₺/100g` : '—'}
+                              </td>
+                              <td style={{ padding: '9px 16px 9px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                {a.savingPct != null && a.savingPct > 0
+                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: '#16a34a', fontWeight: 700 }}><ArrowDownRight size={12} />%{a.savingPct}</span>
+                                  : a.savingPct != null
+                                    ? <span style={{ color: '#ef4444', fontWeight: 600 }}>+%{Math.abs(a.savingPct)}</span>
+                                    : <span style={{ color: 'var(--text-xdim)' }}>—</span>}
+                              </td>
+                            </tr>
+                            {aiOpen === i && (
+                              <tr><td colSpan={4} style={{ padding: '4px 16px 12px 38px', background: 'var(--surface)' }}>
+                                <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+                                  {a.ingredients.map((ing, j) => (
+                                    <span key={j} style={{ color: ing.matchedStok ? 'var(--text)' : '#b45309' }}>
+                                      {ing.name} <span style={{ color: 'var(--text-xdim)' }}>{ing.miktar}{ing.birim}</span>
+                                      {ing.maliyet > 0 ? ` · ${fmt(ing.maliyet)}₺` : ' · ○'}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td></tr>
+                            )}
+                          </React.Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                {aiAlts && (
+                  <div style={{ padding: '8px 16px', fontSize: 10, color: 'var(--text-xdim)', borderTop: '1px solid var(--border)' }}>
+                    Tarifler AI üretimi (tahmini), fiyatlar cost canlı listesinden. ○ = fiyatı eşleşmeyen malzeme. Karşılaştırma ₺/100g üzerinden.
                   </div>
                 )}
               </div>
