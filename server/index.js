@@ -1699,6 +1699,9 @@ function unitToKgFactor(birim) {
   return null;
 }
 
+// Elle yapılan malzeme → cost stok_mali eşleştirmeleri (db.json'da kalıcı)
+let ingredientStokMap = db.get('ingredientStokMap').value() || {};
+
 // Reçete maliyeti hesapla (canlı DB fiyatı öncelikli, yoksa statik)
 // opts.guardStatic: ağırlık/hacim biriminde birim başına > 50 ₺ olan statik
 // inglist fiyatları neredeyse kesin hatalı birim (kg fiyatı g'a yazılmış vb.)
@@ -1710,8 +1713,10 @@ function calcRecipeCost(y_no, opts = {}) {
     const ingKey = row.ingredient ? row.ingredient.trim().toUpperCase() : '';
     const factor = unitToKgFactor(row.birim); // null = adet/belirsiz
 
-    // Önce canlı fiyat, sonra statik inglist fiyatı
-    const livePrice = livePriceMap[ingKey];
+    // Elle eşleştirme: malzeme → cost stok_mali anahtarı (varsa onun canlı fiyatı)
+    const mappedKey = ingredientStokMap[ingKey];
+    // Önce canlı fiyat (gerekirse eşleştirilen stok), sonra statik inglist fiyatı
+    const livePrice = livePriceMap[mappedKey || ingKey];
     const ing = ingMap[ingKey];
     // Statik fiyat inglist'te de g/cl bazında saklanmış olabilir — onu olduğu gibi kullan
     const staticPrice = ing ? ing.ing_fiyat : 0;
@@ -1721,12 +1726,12 @@ function calcRecipeCost(y_no, opts = {}) {
     if (livePrice != null && livePrice > 0 && factor != null) {
       // Canlı fiyat TL/kg → miktar(g)*0.001 * fiyat(TL/kg)
       fiyat  = livePrice * factor;   // birim başına TL (g, cl, ml…)
-      source = 'live';
+      source = mappedKey ? 'manual' : 'live';
       maliyet = fiyat * (row.miktar || 0);
     } else if (livePrice != null && livePrice > 0 && factor == null) {
       // Birim adet/bilinmiyor, canlı fiyat direkt kullan
       fiyat  = livePrice;
-      source = 'live';
+      source = mappedKey ? 'manual' : 'live';
       maliyet = fiyat * (row.miktar || 0);
     } else {
       // Statik fiyat (inglist'te zaten reçete birimiyle eşleşiyor)
@@ -1963,6 +1968,37 @@ app.get('/api/cost-oneri/alternatives/:y_no', (req, res) => {
     .slice(0, max)
     .map(r => ({ ...r, savingPct: Math.round((1 - r[metric] / refCost) * 100) }));
   res.json({ ref, metric, scope, alternatives });
+});
+
+// Cost güncel ürün listesinde arama (elle eşleştirme için)
+app.get('/api/cost-oneri/stok-ara', (req, res) => {
+  const q = (req.query.q || '').trim().toUpperCase();
+  if (q.length < 2) return res.json([]);
+  const matches = [];
+  for (const [stok, fiyat] of Object.entries(livePriceMap)) {
+    if (stok.includes(q)) matches.push({ stok, fiyatKg: fiyat });
+  }
+  matches.sort((a, b) => {
+    const as = a.stok.startsWith(q) ? 0 : 1, bs = b.stok.startsWith(q) ? 0 : 1;
+    return as - bs || a.stok.length - b.stok.length;
+  });
+  res.json(matches.slice(0, 30));
+});
+
+// Malzeme → cost stok elle eşleştir (stok boş ise eşleştirmeyi kaldır)
+app.post('/api/cost-oneri/eslestir', (req, res) => {
+  const ingredient = (req.body.ingredient || '').trim();
+  const stok = (req.body.stok || '').trim();
+  if (!ingredient) return res.status(400).json({ error: 'ingredient gerekli' });
+  const ingKey = ingredient.toUpperCase();
+  if (stok) ingredientStokMap[ingKey] = stok.toUpperCase();
+  else delete ingredientStokMap[ingKey];
+  db.set('ingredientStokMap', ingredientStokMap).write();
+  _costIndex = null; // maliyet cache'ini tazele
+  res.json({
+    ok: true, ingredient: ingKey, stok: stok.toUpperCase() || null,
+    fiyatKg: stok ? (livePriceMap[stok.toUpperCase()] ?? null) : null,
+  });
 });
 
 // GET /api/ingredients — malzeme listesi (arama, relevance sıralı)

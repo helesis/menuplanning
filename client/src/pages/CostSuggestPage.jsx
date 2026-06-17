@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, ChevronRight, X, TrendingDown, ArrowDownRight, Coins, CircleDollarSign } from 'lucide-react'
+import { Search, ChevronRight, X, TrendingDown, ArrowDownRight, Coins, CircleDollarSign, Star, Link2, Unlink } from 'lucide-react'
 
 const BOLUM_COLORS = {
   'ANA RESTORAN': { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
@@ -48,6 +48,12 @@ export default function CostSuggestPage() {
   const [altScope, setAltScope] = useState('bolum')
   const [detailLoading, setDetailLoading] = useState(false)
   const debounceRef = useRef(null)
+  // Elle eşleştirme modalı
+  const [mapIng, setMapIng]       = useState(null)   // eşleştirilen malzeme adı
+  const [mapQ, setMapQ]           = useState('')
+  const [mapResults, setMapResults] = useState([])
+  const [mapBusy, setMapBusy]     = useState(false)
+  const mapDebounce = useRef(null)
 
   useEffect(() => {
     fetch('/api/cost-oneri/meta').then(r => r.json()).then(setMeta).catch(() => {})
@@ -89,6 +95,37 @@ export default function CostSuggestPage() {
   }
 
   const changeScope = (s) => { setAltScope(s); if (selected) loadAlts(selected, s) }
+
+  // ── Elle eşleştirme ──
+  const openMap = (ingredient) => { setMapIng(ingredient); setMapQ(ingredient); setMapResults([]) }
+  const closeMap = () => { setMapIng(null); setMapQ(''); setMapResults([]) }
+
+  useEffect(() => {
+    if (mapIng == null) return
+    clearTimeout(mapDebounce.current)
+    const q = mapQ.trim()
+    if (q.length < 2) { setMapResults([]); return }
+    mapDebounce.current = setTimeout(() => {
+      fetch(`/api/cost-oneri/stok-ara?q=${encodeURIComponent(q)}`)
+        .then(r => r.json()).then(d => setMapResults(Array.isArray(d) ? d : [])).catch(() => setMapResults([]))
+    }, 250)
+    return () => clearTimeout(mapDebounce.current)
+  }, [mapQ, mapIng])
+
+  const saveMap = (ingredient, stok) => {
+    setMapBusy(true)
+    fetch('/api/cost-oneri/eslestir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredient, stok }),
+    })
+      .then(r => r.json())
+      .then(() => {
+        setMapBusy(false); closeMap()
+        if (selected) openDetail(selected)                 // detayı tazele (yeni fiyat görünür)
+        load(q, bolum, tur, sort, dir, onlyPriced)          // listeyi tazele
+      })
+      .catch(() => setMapBusy(false))
+  }
 
   const SortBtn = ({ val, label }) => (
     <button
@@ -263,7 +300,18 @@ export default function CostSuggestPage() {
                         <td style={{ padding: '8px 16px', color: 'var(--text)' }}>
                           {row.ingredient}
                           {row.source === 'live' && <span title="Canlı alış fiyatı" style={{ marginLeft: 5, fontSize: 9, color: '#16a34a' }}>● canlı</span>}
-                          {!(row.fiyat > 0) && <span title="Fiyat eşleşmedi" style={{ marginLeft: 5, fontSize: 9, color: '#ef4444' }}>○ fiyat yok</span>}
+                          {row.source === 'manual' && (
+                            <button onClick={() => openMap(row.ingredient)} title="Elle eşleştirildi — değiştir"
+                              style={{ marginLeft: 5, fontSize: 9, color: 'var(--gold)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                              <Link2 size={10} /> eşlendi
+                            </button>
+                          )}
+                          {!(row.fiyat > 0) && (
+                            <button onClick={() => openMap(row.ingredient)} title="Cost listesinden ürün seçerek fiyat eşleştir"
+                              style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 5, cursor: 'pointer', padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              <Star size={11} fill="#f59e0b" stroke="#f59e0b" /> fiyat yok · eşle
+                            </button>
+                          )}
                         </td>
                         <td style={{ padding: '8px 16px', textAlign: 'right', color: 'var(--text-dim)' }}>{row.miktar} {row.birim}</td>
                         <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: row.maliyet > 0 ? 600 : 400, color: row.maliyet > 0 ? 'var(--text)' : 'var(--text-xdim)' }}>
@@ -281,6 +329,47 @@ export default function CostSuggestPage() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Elle eşleştirme modalı — cost güncel ürün listesinden seç */}
+      {mapIng != null && (
+        <div onClick={closeMap} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '12vh' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 560, maxWidth: '92vw', maxHeight: '70vh', display: 'flex', flexDirection: 'column', background: 'var(--bg, #fff)', borderRadius: 12, border: '1px solid var(--border)', boxShadow: '0 12px 40px rgba(0,0,0,.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Star size={16} fill="#f59e0b" stroke="#f59e0b" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Cost ürünüyle eşleştir</div>
+                <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mapIng}</div>
+              </div>
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={closeMap}><X size={14} /></button>
+            </div>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+                <input className="form-input" autoFocus placeholder="Cost listesinde ara (en son dönem fiyatlı ürünler)..." value={mapQ} onChange={e => setMapQ(e.target.value)} style={{ paddingLeft: 32, width: '100%' }} />
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {mapQ.trim().length < 2 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)', fontSize: 12 }}>Aramak için en az 2 harf yazın.</div>}
+              {mapQ.trim().length >= 2 && mapResults.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)', fontSize: 12 }}>Eşleşen cost ürünü bulunamadı.</div>}
+              {mapResults.map(m => (
+                <div key={m.stok} onClick={() => !mapBusy && saveMap(mapIng, m.stok)}
+                  style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', cursor: mapBusy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <Link2 size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontSize: 12, color: 'var(--text)' }}>{m.stok}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{fmt(m.fiyatKg)} ₺/kg</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => !mapBusy && saveMap(mapIng, '')} style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Unlink size={13} /> Eşleştirmeyi kaldır
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--text-xdim)' }}>{mapBusy ? 'Kaydediliyor…' : 'Bir ürüne tıkla → eşleştir'}</span>
+            </div>
           </div>
         </div>
       )}
