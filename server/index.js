@@ -2059,6 +2059,68 @@ function priceIngredientList(items) {
   };
 }
 
+// Menü yemeği (serbest metin) → reçete eşleştir (exact → contains → kelime skoru)
+const _normName = s => (s || '').toLocaleUpperCase('tr').replace(/[^A-ZÇĞİÖŞÜ0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+let _normProducts = null, _dishMatchCache = new Map();
+function matchDishToRecipe(name) {
+  if (_dishMatchCache.has(name)) return _dishMatchCache.get(name);
+  if (!_normProducts) _normProducts = recipeProducts.map(p => ({ y_no: p.y_no, adi: p.adi, n: _normName(p.adi) }));
+  const n = _normName(name);
+  let result = null;
+  if (n) {
+    let hit = _normProducts.find(p => p.n === n);
+    if (hit) result = { y_no: hit.y_no, adi: hit.adi, how: 'exact' };
+    if (!result && n.length >= 5) {
+      const c = _normProducts.filter(p => p.n.includes(n)).sort((a, b) => a.n.length - b.n.length);
+      if (c.length) result = { y_no: c[0].y_no, adi: c[0].adi, how: 'contains' };
+    }
+    if (!result) {
+      const words = n.split(' ').filter(w => w.length >= 4);
+      if (words.length) {
+        const sc = _normProducts.map(p => ({ p, h: words.filter(w => p.n.includes(w)).length }))
+          .filter(x => x.h >= 2).sort((a, b) => b.h - a.h || a.p.n.length - b.p.n.length);
+        if (sc.length) result = { y_no: sc[0].p.y_no, adi: sc[0].p.adi, how: 'word' };
+      }
+    }
+  }
+  _dishMatchCache.set(name, result);
+  return result;
+}
+
+// Haftalık plan menüleri → her menüde (öğünde) en değerli (en pahalı) N item
+app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
+  const top = parseInt(req.query.top) || 10;
+  const menus = db.get('menus').value() || [];
+  const out = menus.map(m => {
+    const dishes = [];
+    for (const s of (m.stations || [])) for (const d of (s.dishes || [])) {
+      if (d && d.name) dishes.push({ name: d.name, station: s.name, course: d.course });
+    }
+    const costed = [];
+    for (const d of dishes) {
+      const mt = matchDishToRecipe(d.name);
+      if (!mt) continue;
+      const c = calcRecipeCost(mt.y_no, { guardStatic: true });
+      if (!(c.total > 0)) continue;
+      const det = c.detail || [];
+      const priced = det.filter(r => r.fiyat > 0).length;
+      costed.push({
+        dish: d.name, station: d.station, course: d.course,
+        y_no: mt.y_no, recipe: mt.adi, how: mt.how,
+        total: c.total, per100g: c.per100g,
+        coverage: det.length ? Math.round(priced / det.length * 100) : 0,
+        liveCount: det.filter(r => r.source === 'live' || r.source === 'manual').length,
+      });
+    }
+    costed.sort((a, b) => (b.total || 0) - (a.total || 0));
+    return {
+      id: m.id, theme: m.theme, day_of_week: m.day_of_week, meal_type: m.meal_type,
+      dishCount: dishes.length, costedCount: costed.length, items: costed.slice(0, top),
+    };
+  });
+  res.json({ menus: out });
+});
+
 const _aiAltCache = new Map(); // y_no -> { at, data }
 
 app.post('/api/cost-oneri/ai-alternatif', async (req, res) => {
