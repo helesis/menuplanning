@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { CalendarDays, BarChart2, Upload, UtensilsCrossed, User, LayoutGrid, Tag, Scale, BookOpen, Users, LogOut, Printer, ShoppingBasket, QrCode } from 'lucide-react'
+import { CalendarDays, BarChart2, Upload, UtensilsCrossed, User, LayoutGrid, Tag, Scale, BookOpen, Users, LogOut, Printer, ShoppingBasket, QrCode, Coins } from 'lucide-react'
 import * as api from './api.js'
 import WeeklyPage from './pages/WeeklyPage.jsx'
 import StatsPage from './pages/StatsPage.jsx'
@@ -12,6 +12,7 @@ import RecipesPage from './pages/RecipesPage.jsx'
 import UsersPage from './pages/UsersPage.jsx'
 import HalPricesPage from './pages/HalPricesPage.jsx'
 import QrOrdersPage from './pages/QrOrdersPage.jsx'
+import CostSuggestPage from './pages/CostSuggestPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ProductionPlanModal from './pages/ProductionPlanModal.jsx'
 import Toast from './components/Toast.jsx'
@@ -87,6 +88,7 @@ export default function App() {
     { key: 'recipes',   icon: <BookOpen size={16} />,         label: 'Reçeteler' },
     { key: 'hal',       icon: <ShoppingBasket size={16} />,  label: 'Hal Fiyatları' },
     { key: 'qrorders',  icon: <QrCode size={16} />,           label: 'QR Siparişler' },
+    { key: 'costsuggest', icon: <Coins size={16} />,          label: 'Maliyet Önerileri' },
   ]
 
   return (
@@ -168,6 +170,7 @@ export default function App() {
         {page === 'recipes' && <RecipesPage toast={toast} />}
         {page === 'hal' && <HalPricesPage token={token} menus={menus} />}
         {page === 'qrorders' && <QrOrdersPage token={token} />}
+        {page === 'costsuggest' && <CostSuggestPage />}
         {page === 'users' && currentUser.role === 'Admin' && (
           <UsersPage token={token} toast={toast} currentUser={currentUser} />
         )}

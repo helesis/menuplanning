@@ -1700,7 +1700,10 @@ function unitToKgFactor(birim) {
 }
 
 // Reçete maliyeti hesapla (canlı DB fiyatı öncelikli, yoksa statik)
-function calcRecipeCost(y_no) {
+// opts.guardStatic: ağırlık/hacim biriminde birim başına > 50 ₺ olan statik
+// inglist fiyatları neredeyse kesin hatalı birim (kg fiyatı g'a yazılmış vb.)
+// → fiyatsız say. Varsayılan kapalı; mevcut çağrılar değişmeden çalışır.
+function calcRecipeCost(y_no, opts = {}) {
   const rows = ingredientsByProduct[y_no] || [];
   let total = 0;
   const detail = rows.map(row => {
@@ -1727,7 +1730,8 @@ function calcRecipeCost(y_no) {
       maliyet = fiyat * (row.miktar || 0);
     } else {
       // Statik fiyat (inglist'te zaten reçete birimiyle eşleşiyor)
-      fiyat  = staticPrice;
+      const staticImplausible = opts.guardStatic && factor != null && staticPrice > 50;
+      fiyat  = staticImplausible ? 0 : staticPrice;
       source = 'static';
       maliyet = fiyat * (row.miktar || 0);
     }
@@ -1885,6 +1889,80 @@ app.get('/api/recipes/:y_no', (req, res) => {
 app.get('/api/recipe-bolumler', (req, res) => {
   const bolumler = [...new Set(recipeProducts.map(p => p.bolum).filter(Boolean))].sort();
   res.json(bolumler);
+});
+
+// ─── MALİYET ÖNERİLERİ (yeni sekme — mevcut calcRecipeCost'u yeniden kullanır) ───
+// Tüm reçetelerin maliyet özetini cache'le (5 dk TTL; loadLivePrices 6 saatte bir yeniler)
+let _costIndex = null, _costIndexAt = 0;
+function buildCostIndex() {
+  return recipeProducts.map(p => {
+    const c = calcRecipeCost(p.y_no, { guardStatic: true });
+    const det = c.detail || [];
+    const ingredientCount = det.length;
+    const pricedCount = det.filter(r => r.fiyat > 0).length;
+    const liveCount   = det.filter(r => r.source === 'live' && r.fiyat > 0).length;
+    return {
+      y_no: p.y_no, adi: p.adi, bolum: p.bolum, tur: p.tur,
+      total: c.total, per100g: c.per100g, totalGrams: c.totalGrams,
+      ingredientCount, pricedCount, liveCount,
+      coverage: ingredientCount ? Math.round((pricedCount / ingredientCount) * 100) : 0,
+    };
+  });
+}
+function getCostIndex() {
+  if (_costIndex && Date.now() - _costIndexAt < 5 * 60 * 1000) return _costIndex;
+  _costIndex = buildCostIndex();
+  _costIndexAt = Date.now();
+  return _costIndex;
+}
+
+// Filtre seçenekleri (bölüm + tür listeleri)
+app.get('/api/cost-oneri/meta', (req, res) => {
+  const idx = getCostIndex();
+  res.json({
+    count: idx.length,
+    bolumler: [...new Set(idx.map(r => r.bolum).filter(Boolean))].sort(),
+    turler:   [...new Set(idx.map(r => r.tur).filter(Boolean))].sort(),
+  });
+});
+
+// Maliyete göre sıralı reçete havuzu
+app.get('/api/cost-oneri/recipes', (req, res) => {
+  const { q = '', bolum = '', tur = '', sort = 'per100g', dir = 'asc', onlyPriced = '' } = req.query;
+  let list = getCostIndex();
+  if (bolum) list = list.filter(r => r.bolum === bolum);
+  if (tur)   list = list.filter(r => r.tur === tur);
+  if (q) { const Q = q.toUpperCase(); list = list.filter(r => r.adi && r.adi.toUpperCase().includes(Q)); }
+  if (onlyPriced === '1') list = list.filter(r => r.coverage > 0 && r.total > 0);
+  const key = sort === 'total' ? 'total' : sort === 'coverage' ? 'coverage' : 'per100g';
+  list = [...list].sort((a, b) => {
+    const av = a[key] == null ? Infinity : a[key];
+    const bv = b[key] == null ? Infinity : b[key];
+    return dir === 'desc' ? bv - av : av - bv;
+  });
+  res.json({ total: list.length, items: list.slice(0, 300) });
+});
+
+// Bir reçeteye daha ucuz benzer alternatifler (aynı bölüm ya da tür)
+app.get('/api/cost-oneri/alternatives/:y_no', (req, res) => {
+  const y_no = parseInt(req.params.y_no);
+  const scope = req.query.scope === 'tur' ? 'tur' : 'bolum';
+  const max = parseInt(req.query.max) || 12;
+  const idx = getCostIndex();
+  const ref = idx.find(r => r.y_no === y_no);
+  if (!ref) return res.status(404).json({ error: 'Reçete bulunamadı' });
+  const metric = ref.per100g != null ? 'per100g' : 'total';
+  const refCost = ref[metric];
+  if (refCost == null || refCost <= 0) return res.json({ ref, metric, alternatives: [] });
+  let cands = idx.filter(r => r.y_no !== y_no && r[metric] != null && r[metric] > 0);
+  if (scope === 'tur' && ref.tur) cands = cands.filter(r => r.tur === ref.tur);
+  else if (ref.bolum)             cands = cands.filter(r => r.bolum === ref.bolum);
+  const alternatives = cands
+    .filter(r => r[metric] < refCost)
+    .sort((a, b) => a[metric] - b[metric])
+    .slice(0, max)
+    .map(r => ({ ...r, savingPct: Math.round((1 - r[metric] / refCost) * 100) }));
+  res.json({ ref, metric, scope, alternatives });
 });
 
 // GET /api/ingredients — malzeme listesi (arama, relevance sıralı)
