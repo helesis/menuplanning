@@ -1707,7 +1707,10 @@ let ingredientStokMap = db.get('ingredientStokMap').value() || {};
 // inglist fiyatları neredeyse kesin hatalı birim (kg fiyatı g'a yazılmış vb.)
 // → fiyatsız say. Varsayılan kapalı; mevcut çağrılar değişmeden çalışır.
 function calcRecipeCost(y_no, opts = {}) {
-  const rows = ingredientsByProduct[y_no] || [];
+  return calcCostFromRows(ingredientsByProduct[y_no] || [], opts);
+}
+// rows: [{ ingredient, miktar, birim }] — hem normal reçete hem özel reçete için ortak maliyet
+function calcCostFromRows(rows, opts = {}) {
   let total = 0;
   const detail = rows.map(row => {
     const ingKey = row.ingredient ? row.ingredient.trim().toUpperCase() : '';
@@ -2076,6 +2079,35 @@ function matchDishToRecipe(name) {
   return result;
 }
 
+// Özel reçeteyi (db.json customRecipes) yemek adına göre birebir bul
+function findCustomRecipe(name) {
+  const n = _normName(name);
+  if (!n) return null;
+  const list = db.get('customRecipes').value() || [];
+  return list.find(c => _normName(c.dish_name) === n) || null;
+}
+
+// Bir plan yemeğini maliyetle: önce ÖZEL REÇETE, sonra birebir normal reçete
+function costDish(dishName, opts = {}) {
+  const cr = findCustomRecipe(dishName);
+  if (cr) {
+    const rows = (cr.ingredients || []).map(i => ({ ingredient: i.ing_name || i.ingredient, miktar: i.miktar, birim: i.birim }));
+    return { found: true, source: 'custom', recipe: cr.dish_name, y_no: null, ...calcCostFromRows(rows, opts) };
+  }
+  const mt = matchDishToRecipe(dishName);
+  if (mt) return { found: true, source: 'recipe', recipe: mt.adi, y_no: mt.y_no, ...calcRecipeCost(mt.y_no, opts) };
+  return { found: false };
+}
+
+// Tek plan yemeği maliyeti (özel reçete + normal reçete birleşik) — detay paneli
+app.get('/api/cost-oneri/dish-cost', (req, res) => {
+  const dish = (req.query.dish || '').trim();
+  if (!dish) return res.status(400).json({ error: 'dish gerekli' });
+  const c = costDish(dish, { guardStatic: true });
+  if (!c.found) return res.status(404).json({ error: 'Reçete eşleşmedi' });
+  res.json({ adi: dish, recipe: c.recipe, source: c.source, y_no: c.y_no, total: c.total, totalGrams: c.totalGrams, per100g: c.per100g, detail: c.detail });
+});
+
 // Haftalık plan menüleri → her menüde (öğünde) en değerli (en pahalı) N item
 app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
   const top = parseInt(req.query.top) || 10;
@@ -2087,14 +2119,13 @@ app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
     }
     const costed = [], uncosted = [];
     for (const d of dishes) {
-      const mt = matchDishToRecipe(d.name);
-      const c = mt ? calcRecipeCost(mt.y_no, { guardStatic: true }) : null;
-      if (!mt || !(c && c.total > 0)) { uncosted.push(d.name); continue; }
+      const c = costDish(d.name, { guardStatic: true });
+      if (!c.found || !(c.total > 0)) { uncosted.push(d.name); continue; }
       const det = c.detail || [];
       const priced = det.filter(r => r.fiyat > 0).length;
       costed.push({
         dish: d.name, station: d.station, course: d.course,
-        y_no: mt.y_no, recipe: mt.adi, how: mt.how,
+        y_no: c.y_no, recipe: c.recipe, source: c.source,
         total: c.total, per100g: c.per100g,
         coverage: det.length ? Math.round(priced / det.length * 100) : 0,
         liveCount: det.filter(r => r.source === 'live' || r.source === 'manual').length,
@@ -2113,14 +2144,24 @@ app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
 const _aiAltCache = new Map(); // y_no -> { at, data }
 
 app.post('/api/cost-oneri/ai-alternatif', async (req, res) => {
-  const y_no = parseInt(req.body.y_no);
   const force = !!req.body.force;
-  const product = recipeProducts.find(p => p.y_no === y_no);
-  if (!product) return res.status(404).json({ error: 'Reçete bulunamadı' });
-  const cached = _aiAltCache.get(y_no);
+  const dish = (req.body.dish || '').trim();
+  let refCost, dishAdi, bolum = '', tur = '', cacheKey;
+  if (dish) {
+    const c = costDish(dish, { guardStatic: true });
+    if (!c.found) return res.status(404).json({ error: 'Reçete eşleşmedi' });
+    refCost = c; dishAdi = dish; cacheKey = 'd:' + dish.toLocaleUpperCase('tr');
+    if (c.y_no) { const p = recipeProducts.find(p => p.y_no === c.y_no); if (p) { bolum = p.bolum || ''; tur = p.tur || ''; } }
+  } else {
+    const y_no = parseInt(req.body.y_no);
+    const product = recipeProducts.find(p => p.y_no === y_no);
+    if (!product) return res.status(404).json({ error: 'Reçete bulunamadı' });
+    refCost = calcRecipeCost(y_no, { guardStatic: true });
+    dishAdi = product.adi; bolum = product.bolum || ''; tur = product.tur || ''; cacheKey = 'y:' + y_no;
+  }
+  const cached = _aiAltCache.get(cacheKey);
   if (cached && !force && Date.now() - cached.at < 24 * 60 * 60 * 1000) return res.json(cached.data);
 
-  const refCost = calcRecipeCost(y_no, { guardStatic: true });
   const drivers = [...(refCost.detail || [])].sort((a, b) => b.maliyet - a.maliyet).slice(0, 5).map(r => r.ingredient).filter(Boolean);
 
   let aiText;
@@ -2131,7 +2172,7 @@ app.post('/api/cost-oneri/ai-alternatif', async (req, res) => {
       messages: [{
         role: 'user',
         content: `Sen bir Türk otel/restoran mutfağı menü maliyet uzmanısın.
-"${product.adi}" pahalı bir menü kalemi (bölüm: ${product.bolum}${product.tur ? ', tür: ' + product.tur : ''}).
+"${dishAdi}" pahalı bir menü kalemi${bolum ? ' (bölüm: ' + bolum + (tur ? ', tür: ' + tur : '') + ')' : ''}.
 Bunun yerine açık büfede sunulabilecek, AYNI ROLDE (aynı kurs/öğün, benzer doyuruculuk ve sunum) ama daha UYGUN MALİYETLİ 10 GERÇEK ve BİLİNEN alternatif yemek öner.
 KURALLAR:
 - HELAL mutfak: domuz, jambon, şarap, alkol vb. ASLA kullanma veya önerme.
@@ -2163,11 +2204,11 @@ SADECE JSON döndür, başka açıklama yok:
   }).sort((x, y) => (x.per100g == null ? Infinity : x.per100g) - (y.per100g == null ? Infinity : y.per100g));
 
   const data = {
-    ref: { y_no, adi: product.adi, bolum: product.bolum, tur: product.tur, per100g: refPer100, total: refCost.total },
+    ref: { adi: dishAdi, bolum, tur, per100g: refPer100, total: refCost.total },
     generatedAt: new Date().toISOString(),
     alternatives,
   };
-  _aiAltCache.set(y_no, { at: Date.now(), data });
+  _aiAltCache.set(cacheKey, { at: Date.now(), data });
   res.json(data);
 });
 

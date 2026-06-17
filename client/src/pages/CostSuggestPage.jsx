@@ -46,7 +46,7 @@ export default function CostSuggestPage() {
     setSelItem(item)
     setDetail(null); setAiAlts(null); setAiErr(null); setAiOpen(null)
     setDetailLoading(true)
-    fetch(`/api/recipes/${item.y_no}`)
+    fetch(`/api/cost-oneri/dish-cost?dish=${encodeURIComponent(item.dish)}`)
       .then(r => r.json())
       .then(d => { setDetail(d); setDetailLoading(false) })
       .catch(() => setDetailLoading(false))
@@ -84,7 +84,7 @@ export default function CostSuggestPage() {
     setAiLoading(true); setAiErr(null)
     fetch('/api/cost-oneri/ai-alternatif', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ y_no: selItem.y_no, force }),
+      body: JSON.stringify({ dish: selItem.dish, force }),
     })
       .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Hata'); return d })
       .then(d => { setAiAlts(d); setAiLoading(false) })
