@@ -24,6 +24,7 @@ export default function CostSuggestPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiErr, setAiErr]       = useState(null)
   const [aiOpen, setAiOpen]     = useState(null)
+  const [showUncosted, setShowUncosted] = useState(false)
 
   // Menüleri (item'larıyla) yükle
   const loadMenus = useCallback(() => {
@@ -113,7 +114,7 @@ export default function CostSuggestPage() {
 
         {menu && (
           <div style={{ padding: '6px 24px', fontSize: 11, color: 'var(--text-dim)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            {menu.dishCount} yemek · {menu.costedCount} maliyetlendi · en pahalı {menu.items.length} gösteriliyor
+            {menu.dishCount} yemek · {menu.costedCount} maliyetlendi (birebir reçete) · en değerli {menu.items.length} gösteriliyor
           </div>
         )}
 
@@ -146,6 +147,20 @@ export default function CostSuggestPage() {
               </div>
             )
           })}
+
+          {/* Reçetesi eşleşmeyen / maliyetlendirilemeyen yemekler */}
+          {!menusLoading && menu && menu.uncosted && menu.uncosted.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border)' }}>
+              <div onClick={() => setShowUncosted(v => !v)} style={{ padding: '10px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-dim)', fontSize: 12, fontWeight: 600 }}>
+                <ChevronDown size={14} style={{ transform: showUncosted ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                Reçetesi eşleşmeyen ({menu.uncosted.length})
+                <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-xdim)' }}>· maliyetlendirilemedi</span>
+              </div>
+              {showUncosted && menu.uncosted.map((dn, i) => (
+                <div key={i} style={{ padding: '6px 24px 6px 46px', fontSize: 12, color: 'var(--text-xdim)', borderTop: '1px solid var(--border)' }}>{dn}</div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

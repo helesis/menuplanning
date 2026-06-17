@@ -2068,20 +2068,9 @@ function matchDishToRecipe(name) {
   const n = _normName(name);
   let result = null;
   if (n) {
-    let hit = _normProducts.find(p => p.n === n);
+    // YALNIZ birebir (normalize) eşleşme — gevşek fuzzy yanlış reçete ikamesine yol açıyordu
+    const hit = _normProducts.find(p => p.n === n);
     if (hit) result = { y_no: hit.y_no, adi: hit.adi, how: 'exact' };
-    if (!result && n.length >= 5) {
-      const c = _normProducts.filter(p => p.n.includes(n)).sort((a, b) => a.n.length - b.n.length);
-      if (c.length) result = { y_no: c[0].y_no, adi: c[0].adi, how: 'contains' };
-    }
-    if (!result) {
-      const words = n.split(' ').filter(w => w.length >= 4);
-      if (words.length) {
-        const sc = _normProducts.map(p => ({ p, h: words.filter(w => p.n.includes(w)).length }))
-          .filter(x => x.h >= 2).sort((a, b) => b.h - a.h || a.p.n.length - b.p.n.length);
-        if (sc.length) result = { y_no: sc[0].p.y_no, adi: sc[0].p.adi, how: 'word' };
-      }
-    }
   }
   _dishMatchCache.set(name, result);
   return result;
@@ -2096,12 +2085,11 @@ app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
     for (const s of (m.stations || [])) for (const d of (s.dishes || [])) {
       if (d && d.name) dishes.push({ name: d.name, station: s.name, course: d.course });
     }
-    const costed = [];
+    const costed = [], uncosted = [];
     for (const d of dishes) {
       const mt = matchDishToRecipe(d.name);
-      if (!mt) continue;
-      const c = calcRecipeCost(mt.y_no, { guardStatic: true });
-      if (!(c.total > 0)) continue;
+      const c = mt ? calcRecipeCost(mt.y_no, { guardStatic: true }) : null;
+      if (!mt || !(c && c.total > 0)) { uncosted.push(d.name); continue; }
       const det = c.detail || [];
       const priced = det.filter(r => r.fiyat > 0).length;
       costed.push({
@@ -2115,7 +2103,8 @@ app.get('/api/cost-oneri/menu-itemlar', (req, res) => {
     costed.sort((a, b) => (b.total || 0) - (a.total || 0));
     return {
       id: m.id, theme: m.theme, day_of_week: m.day_of_week, meal_type: m.meal_type,
-      dishCount: dishes.length, costedCount: costed.length, items: costed.slice(0, top),
+      dishCount: dishes.length, costedCount: costed.length,
+      items: costed.slice(0, top), uncosted: [...new Set(uncosted)],
     };
   });
   res.json({ menus: out });
