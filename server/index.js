@@ -2212,6 +2212,71 @@ SADECE JSON döndür, başka açıklama yok:
   res.json(data);
 });
 
+// Menü çapında: en değerli kalemlerin HER BİRİNE 1 daha ucuz alternatif (tek AI çağrısı)
+const _menuAltCache = new Map(); // menuId -> { at, data }
+app.post('/api/cost-oneri/menu-alternatif', async (req, res) => {
+  const menuId = parseInt(req.body.menuId);
+  const top = parseInt(req.body.top) || 10;
+  const force = !!req.body.force;
+  const m = (db.get('menus').value() || []).find(x => x.id === menuId);
+  if (!m) return res.status(404).json({ error: 'Menü bulunamadı' });
+  const cached = _menuAltCache.get(menuId);
+  if (cached && !force && Date.now() - cached.at < 24 * 60 * 60 * 1000) return res.json(cached.data);
+
+  const dishes = [];
+  for (const s of (m.stations || [])) for (const d of (s.dishes || [])) if (d && d.name) dishes.push(d.name);
+  const seen = new Set(), costed = [];
+  for (const name of dishes) {
+    if (seen.has(name)) continue; seen.add(name);
+    const c = costDish(name, { guardStatic: true });
+    if (!c.found || !(c.total > 0)) continue;
+    const driver = [...(c.detail || [])].sort((a, b) => b.maliyet - a.maliyet)[0];
+    costed.push({ dish: name, total: c.total, per100g: c.per100g, driver: driver ? driver.ingredient : '' });
+  }
+  costed.sort((a, b) => (b.total || 0) - (a.total || 0));
+  const items = costed.slice(0, top);
+  if (!items.length) return res.json({ menuId, theme: m.theme, suggestions: [] });
+
+  const list = items.map((it, i) => `${i + 1}. ${it.dish} (~${it.per100g != null ? it.per100g.toFixed(1) : '?'}₺/100g${it.driver ? ', pahalı bileşen: ' + it.driver : ''})`).join('\n');
+  let aiText;
+  try {
+    const msg = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: `Sen bir Türk otel/restoran mutfağı menü maliyet uzmanısın. "${m.theme}" menüsündeki şu pahalı kalemlerin HER BİRİ için, yerine sunulabilecek AYNI ROLDE (aynı kurs/öğün, benzer doyuruculuk ve sunum) ama daha UYGUN MALİYETLİ tam olarak 1 (BİR) gerçek alternatif yemek öner.
+KURALLAR:
+- HELAL (domuz, jambon, alkol vb. yok).
+- Türkiye otel mutfağında GERÇEKTEN bilinen yemekler; uydurma yemek/malzeme yok.
+- Pahalı bileşeni daha ekonomik muadiliyle ikame et.
+- Her alternatif için ~10 kişilik malzeme listesi (Türkçe BÜYÜK HARF; miktar + birim g/kg/lt/ml/adet).
+- Her kalem için tam 1 alternatif; index ile eşleştir.
+Kalemler:
+${list}
+SADECE JSON döndür: {"suggestions":[{"index":1,"name":"ALTERNATIF YEMEK","ingredients":[{"name":"MALZEME","miktar":500,"birim":"g"}]}]}`,
+      }],
+    });
+    aiText = msg.content[0].text.trim();
+  } catch (e) { return res.status(502).json({ error: 'AI çağrısı başarısız: ' + e.message }); }
+
+  let sugg = [];
+  try { const j = JSON.parse(aiText.replace(/```json\n?/g, '').replace(/```\n?/g, '')); sugg = j.suggestions || []; }
+  catch (e) { return res.status(500).json({ error: 'AI yanıtı parse edilemedi' }); }
+
+  const byIdx = new Map(sugg.map(s => [Number(s.index), s]));
+  const suggestions = items.map((it, i) => {
+    const s = byIdx.get(i + 1) || sugg[i];
+    if (!s) return { original: it, alt: null };
+    const p = priceIngredientList(s.ingredients || []);
+    const savingPct = (it.per100g && p.per100g != null && it.per100g > 0) ? Math.round((1 - p.per100g / it.per100g) * 100) : null;
+    return { original: it, alt: { name: s.name, per100g: p.per100g, totalEst: p.total, coverage: p.coverage, savingPct, ingredients: p.detail } };
+  });
+  const data = { menuId, theme: m.theme, generatedAt: new Date().toISOString(), suggestions };
+  _menuAltCache.set(menuId, { at: Date.now(), data });
+  res.json(data);
+});
+
 // GET /api/ingredients — malzeme listesi (arama, relevance sıralı)
 app.get('/api/ingredients', (req, res) => {
   const raw = (req.query.q || '').trim();

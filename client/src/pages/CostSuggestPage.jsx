@@ -19,11 +19,11 @@ export default function CostSuggestPage() {
   const [mapResults, setMapResults] = useState([])
   const [mapBusy, setMapBusy]   = useState(false)
   const mapDebounce = useRef(null)
-  // AI alternatifleri
-  const [aiAlts, setAiAlts]     = useState(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiErr, setAiErr]       = useState(null)
-  const [aiOpen, setAiOpen]     = useState(null)
+  // Menü çapında alternatifler (her kaleme 1)
+  const [menuAlts, setMenuAlts] = useState(null)        // { menuId, suggestions }
+  const [menuAltLoading, setMenuAltLoading] = useState(false)
+  const [menuAltErr, setMenuAltErr] = useState(null)
+  const [altOpen, setAltOpen]   = useState(null)        // açık alternatif (malzeme detayı) dish adı
   const [showUncosted, setShowUncosted] = useState(false)
 
   // Menüleri (item'larıyla) yükle
@@ -44,7 +44,7 @@ export default function CostSuggestPage() {
 
   const openItem = (item) => {
     setSelItem(item)
-    setDetail(null); setAiAlts(null); setAiErr(null); setAiOpen(null)
+    setDetail(null)
     setDetailLoading(true)
     fetch(`/api/cost-oneri/dish-cost?dish=${encodeURIComponent(item.dish)}`)
       .then(r => r.json())
@@ -78,18 +78,20 @@ export default function CostSuggestPage() {
     }).catch(() => setMapBusy(false))
   }
 
-  // ── AI alternatif ──
-  const genAiAlts = (force = false) => {
-    if (!selItem) return
-    setAiLoading(true); setAiErr(null)
-    fetch('/api/cost-oneri/ai-alternatif', {
+  // ── Menü çapında alternatif üret (her değerli kaleme 1) ──
+  const genMenuAlts = (force = false) => {
+    if (!selMenu) return
+    setMenuAltLoading(true); setMenuAltErr(null); setAltOpen(null)
+    fetch('/api/cost-oneri/menu-alternatif', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dish: selItem.dish, force }),
+      body: JSON.stringify({ menuId: selMenu, force }),
     })
       .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Hata'); return d })
-      .then(d => { setAiAlts(d); setAiLoading(false) })
-      .catch(e => { setAiErr(e.message); setAiLoading(false) })
+      .then(d => { setMenuAlts(d); setMenuAltLoading(false) })
+      .catch(e => { setMenuAltErr(e.message); setMenuAltLoading(false) })
   }
+  const altFor = (dish) => (menuAlts && menuAlts.menuId === selMenu)
+    ? (menuAlts.suggestions || []).find(s => s.original.dish === dish) : null
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -105,12 +107,17 @@ export default function CostSuggestPage() {
         {/* Menü seçici */}
         <div style={{ padding: '10px 24px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <CalendarDays size={15} style={{ color: 'var(--text-dim)' }} />
-          <select className="form-select" value={selMenu ?? ''} onChange={e => { setSelMenu(Number(e.target.value)); setSelItem(null) }} style={{ flex: 1 }}>
+          <select className="form-select" value={selMenu ?? ''} onChange={e => { setSelMenu(Number(e.target.value)); setSelItem(null); setMenuAlts(null) }} style={{ flex: 1 }}>
             {menus.map(m => (
               <option key={m.id} value={m.id}>{m.theme} · {mealLabel(m.meal_type)}</option>
             ))}
           </select>
+          <button className="btn btn-sm" style={{ background: 'var(--gold)', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }} disabled={menuAltLoading || !menu} onClick={() => genMenuAlts(menuAlts && menuAlts.menuId === selMenu)}>
+            <Sparkles size={14} /> {menuAltLoading ? 'Üretiliyor…' : (menuAlts && menuAlts.menuId === selMenu ? '↻ Yenile' : 'Alternatif üret')}
+          </button>
         </div>
+        {menuAltLoading && <div style={{ padding: '6px 24px', fontSize: 11, color: 'var(--text-dim)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>AI tüm menüyü gözden geçiriyor, her değerli kaleme 1 alternatif… (~10-20 sn)</div>}
+        {menuAltErr && <div style={{ padding: '6px 24px', fontSize: 11, color: '#ef4444', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>{menuAltErr}</div>}
 
         {menu && (
           <div style={{ padding: '6px 24px', fontSize: 11, color: 'var(--text-dim)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -126,9 +133,11 @@ export default function CostSuggestPage() {
           )}
           {!menusLoading && menu && menu.items.map((it, i) => {
             const isActive = selItem && selItem.y_no === it.y_no && selItem.dish === it.dish
+            const sug = altFor(it.dish)
             return (
-              <div key={i} onClick={() => openItem(it)}
-                style={{ padding: '11px 18px 11px 24px', borderBottom: '1px solid var(--border)', cursor: 'pointer',
+              <React.Fragment key={i}>
+              <div onClick={() => openItem(it)}
+                style={{ padding: '11px 18px 11px 24px', borderBottom: sug && sug.alt ? 'none' : '1px solid var(--border)', cursor: 'pointer',
                   background: isActive ? 'var(--gold-bg)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, transition: 'background .15s' }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--surface)' }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
@@ -145,6 +154,30 @@ export default function CostSuggestPage() {
                 </div>
                 <ChevronRight size={14} style={{ color: 'var(--text-xdim)', flexShrink: 0 }} />
               </div>
+              {sug && sug.alt && (
+                <div onClick={() => setAltOpen(altOpen === it.dish ? null : it.dish)}
+                  style={{ padding: '8px 18px 8px 56px', borderBottom: '1px solid var(--border)', cursor: 'pointer', background: 'rgba(22,163,74,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ArrowDownRight size={13} style={{ color: '#16a34a', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ color: 'var(--text-dim)' }}>yerine: </span><strong>{sug.alt.name}</strong>
+                      <span style={{ marginLeft: 6, fontSize: 10, color: coverageColor(sug.alt.coverage) }}>kapsama %{sug.alt.coverage}</span>
+                    </div>
+                    {altOpen === it.dish && (
+                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: '3px 12px' }}>
+                        {sug.alt.ingredients.map((ing, j) => (
+                          <span key={j} style={{ color: ing.matchedStok ? 'var(--text-dim)' : '#b45309' }}>{ing.name} {ing.miktar}{ing.birim}{ing.maliyet > 0 ? ` · ${fmt(ing.maliyet)}₺` : ' · ○'}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: '#16a34a' }}>{sug.alt.per100g != null ? `${fmt(sug.alt.per100g)} ₺/100g` : '—'}</div>
+                    {sug.alt.savingPct != null && <div style={{ fontSize: 10, fontWeight: 700, color: sug.alt.savingPct > 0 ? '#16a34a' : '#ef4444' }}>{sug.alt.savingPct > 0 ? `%${sug.alt.savingPct} ucuz` : `+%${Math.abs(sug.alt.savingPct)}`}</div>}
+                  </div>
+                </div>
+              )}
+              </React.Fragment>
             )
           })}
 
@@ -197,67 +230,18 @@ export default function CostSuggestPage() {
               </div>
             )}
 
-            {/* AI: bunun yerine daha uygun maliyetli alternatif */}
-            {detail && (
-              <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16, border: '1px solid var(--gold-border)' }}>
-                <div style={{ padding: '10px 16px', background: 'var(--gold-bg)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Sparkles size={15} style={{ color: 'var(--gold)' }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Bunun yerine daha uygun maliyetli alternatif</span>
-                  {aiAlts && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', color: 'var(--text-dim)' }} disabled={aiLoading} onClick={() => genAiAlts(true)}>↻ Yeniden üret</button>}
+            {/* Bu kalem için menü-çapı AI önerisi (varsa) */}
+            {detail && altFor(selItem.dish) && altFor(selItem.dish).alt && (
+              <div className="card" style={{ padding: '12px 16px', marginBottom: 16, border: '1px solid var(--gold-border)', background: 'rgba(22,163,74,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ArrowDownRight size={16} style={{ color: '#16a34a' }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Önerilen alternatif</div>
+                  <div style={{ fontWeight: 700 }}>{altFor(selItem.dish).alt.name}</div>
                 </div>
-                {!aiAlts && !aiLoading && !aiErr && (
-                  <div style={{ padding: 16, textAlign: 'center' }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
-                      Bu kalem yerine sunulabilecek <strong>10 daha ucuz alternatif</strong> yemeği AI üretsin; fiyatlar cost'tan hesaplanır.
-                    </div>
-                    <button className="btn btn-sm" style={{ background: 'var(--gold)', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => genAiAlts(false)}>
-                      <Sparkles size={14} /> Alternatif üret
-                    </button>
-                  </div>
-                )}
-                {aiLoading && <div className="loading"><div className="spinner" /> AI alternatifleri üretiyor… (~5-15 sn)</div>}
-                {aiErr && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#ef4444' }}>{aiErr} · <button className="btn btn-ghost btn-sm" onClick={() => genAiAlts(true)}>tekrar dene</button></div>}
-                {aiAlts && aiAlts.alternatives && (
-                  <table style={{ width: '100%', fontSize: 12 }}>
-                    <tbody>
-                      {aiAlts.alternatives.map((a, i) => (
-                        <React.Fragment key={i}>
-                          <tr onClick={() => setAiOpen(aiOpen === i ? null : i)} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                            <td style={{ padding: '9px 8px 9px 16px', width: 18 }}>
-                              <ChevronDown size={13} style={{ color: 'var(--text-xdim)', transform: aiOpen === i ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
-                            </td>
-                            <td style={{ padding: '9px 8px', color: 'var(--text)', fontWeight: 500 }}>
-                              {a.name}<span style={{ marginLeft: 6, fontSize: 10, color: coverageColor(a.coverage) }}>kapsama %{a.coverage}</span>
-                            </td>
-                            <td style={{ padding: '9px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--gold)', fontWeight: 600 }}>
-                              {a.per100g != null ? `${fmt(a.per100g)} ₺/100g` : '—'}
-                            </td>
-                            <td style={{ padding: '9px 16px 9px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              {a.savingPct != null && a.savingPct > 0
-                                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: '#16a34a', fontWeight: 700 }}><ArrowDownRight size={12} />%{a.savingPct}</span>
-                                : a.savingPct != null
-                                  ? <span style={{ color: '#ef4444', fontWeight: 600 }}>+%{Math.abs(a.savingPct)}</span>
-                                  : <span style={{ color: 'var(--text-xdim)' }}>—</span>}
-                            </td>
-                          </tr>
-                          {aiOpen === i && (
-                            <tr><td colSpan={4} style={{ padding: '4px 16px 12px 38px', background: 'var(--surface)' }}>
-                              <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
-                                {a.ingredients.map((ing, j) => (
-                                  <span key={j} style={{ color: ing.matchedStok ? 'var(--text)' : '#b45309' }}>
-                                    {ing.name} <span style={{ color: 'var(--text-xdim)' }}>{ing.miktar}{ing.birim}</span>{ing.maliyet > 0 ? ` · ${fmt(ing.maliyet)}₺` : ' · ○'}
-                                  </span>
-                                ))}
-                              </div>
-                            </td></tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                {aiAlts && <div style={{ padding: '8px 16px', fontSize: 10, color: 'var(--text-xdim)', borderTop: '1px solid var(--border)' }}>Tarifler AI üretimi (tahmini), fiyatlar cost canlı listesinden. ○ = fiyatı eşleşmeyen malzeme. Karşılaştırma ₺/100g üzerinden.</div>}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 700, color: '#16a34a' }}>{altFor(selItem.dish).alt.per100g != null ? `${fmt(altFor(selItem.dish).alt.per100g)} ₺/100g` : '—'}</div>
+                  {altFor(selItem.dish).alt.savingPct != null && <div style={{ fontSize: 11, fontWeight: 700, color: altFor(selItem.dish).alt.savingPct > 0 ? '#16a34a' : '#ef4444' }}>{altFor(selItem.dish).alt.savingPct > 0 ? `%${altFor(selItem.dish).alt.savingPct} ucuz` : `+%${Math.abs(altFor(selItem.dish).alt.savingPct)}`}</div>}
+                </div>
               </div>
             )}
 
