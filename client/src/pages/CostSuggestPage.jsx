@@ -282,8 +282,8 @@ export default function CostSuggestPage() {
                           {row.ingredient}
                           {row.source === 'live' && <span title="Canlı alış fiyatı" style={{ marginLeft: 5, fontSize: 9, color: '#16a34a' }}>● canlı</span>}
                           {row.source === 'manual' && (
-                            <button onClick={() => openMap(row.ingredient)} title="Elle eşleştirildi — değiştir" style={{ marginLeft: 5, fontSize: 9, color: 'var(--gold)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                              <Link2 size={10} /> eşlendi
+                            <button onClick={() => openMap(row.ingredient)} title="Canlı ürüne eşlendi — değiştirmek için tıkla" style={{ marginLeft: 5, fontSize: 9, color: '#16a34a', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                              ● canlı
                             </button>
                           )}
                           {row.source !== 'live' && row.source !== 'manual' && (
