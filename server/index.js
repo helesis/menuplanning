@@ -2388,18 +2388,15 @@ app.delete('/api/users/:id', authMiddleware, adminOnly, (req, res) => {
 
 // ─── HAL FİYATLARI ───────────────────────────────────────────────────────────
 
-const HAL_REGION_ID = '67b1db61b752f39216d8392d';
-const HAL_REGION_NAME = 'Antalya Merkez';
+const HAL_REGION_NAME = 'Antalya Toptancı Hali';
+// Belediye 2026 ortasında günlük fiyatları eski MarketPrices tablosundan
+// gezipanel'deki günlük PDF'lere taşıdı. Her tarih için ayrı bir PDF yayımlanıyor.
+const HAL_PANEL_HOST   = 'gezipanel.antalya.bel.tr';
+const HAL_PDF_ENDPOINT = 'https://gezipanel.antalya.bel.tr/Methods.aspx/GetGunlukHalFiyatPdf';
+const HAL_PANEL_REFERER = 'https://gezipanel.antalya.bel.tr/hal-gunluk-fiyat';
 
-const HAL_PAGE_ID = '67863b6f3206e6473c59e2e8';
-const HAL_DBFIND = JSON.stringify([
-  { field: 'urun_adi',          wherecluse: 'sorting', fieldValue: 'Asc',        pageparamsid: 'Asc',        isrequest: 'False', fieldtype: 'string' },
-  { field: 'tarih',             wherecluse: '=',       fieldValue: 'fiyattarih', pageparamsid: 'fiyattarih', isrequest: 'True',  fieldtype: 'string' },
-  { field: 'hal_isimleri',      wherecluse: '=',       fieldValue: 'halyerleri', pageparamsid: 'halyerleri', isrequest: 'True',  fieldtype: 'string' },
-  { field: 'en_dusuk_fiyat_sayi', wherecluse: '!=',   fieldValue: '0',          pageparamsid: '0',          isrequest: 'false', fieldtype: 'long'   },
-]);
-
-function httpReq(method, url, body, headers) {
+// Basit HTTPS isteği — gövdeyi Buffer olarak toplar (PDF gibi ikili içerik için).
+function httpsRequestRaw(method, url, body, headers) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const buf = body ? Buffer.from(body) : null;
@@ -2410,15 +2407,11 @@ function httpReq(method, url, body, headers) {
         ...headers,
       },
     };
-    if (buf) {
-      opts.headers['Content-Length'] = buf.length;
-      opts.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
-    }
+    if (buf) opts.headers['Content-Length'] = buf.length;
     const req = https.request(opts, res => {
-      let d = '';
-      const sc = res.headers['set-cookie'] || [];
-      res.on('data', c => d += c);
-      res.on('end', () => resolve({ data: d, cookies: sc, status: res.statusCode }));
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve({ buffer: Buffer.concat(chunks), status: res.statusCode, headers: res.headers }));
     });
     req.on('error', reject);
     if (buf) req.write(buf);
@@ -2436,76 +2429,80 @@ function priceStr(v) {
   return String(v);
 }
 
-// Belediye MarketPrices API'sinden ham ürün listesini çeker (tarih filtresiz).
-// Her ürün kendi 'tarih' alanıyla (YYYYMMDD) döner.
-async function fetchHalProducts(dateStr) {
-  // 1. CSRF token al
-  const pageRes = await httpReq('GET', 'https://www.antalya.bel.tr/tr/halden-gunluk-fiyatlar', null, {});
-  const tokenMatch = pageRes.data.match(/__RequestVerificationToken["'][^>]*value=["']([A-Za-z0-9_\-]+)/);
-  if (!tokenMatch) throw new Error('CSRF token bulunamadı');
-  const token = tokenMatch[1];
-  const cookie = pageRes.cookies.map(c => c.split(';')[0]).join('; ');
+// Türkçe fiyat metnini sayıya çevirir: "1.234,56" -> 1234.56
+function parseTRNumber(s) {
+  if (s == null) return null;
+  const n = parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
 
-  // 2. MarketPrices API çağrısı
-  const rq = encodeURIComponent(JSON.stringify({ halyerleri: HAL_REGION_ID, fiyattarih: dateStr }));
-  const body = '__RequestVerificationToken=' + encodeURIComponent(token) +
-    '&colllection=MarketPrices&lang=1&dateformat=&dbfind=' + encodeURIComponent(HAL_DBFIND) +
-    '&pageid=' + HAL_PAGE_ID + '&requestquery=' + rq +
-    '&collectiontype=0&relationcollection=&collectionfunction=&seolink=halden-gunluk-fiyatlar' +
-    '&sourcetablerefcombobox=&destinationtablerefcombobox=&tablerefselectprojectionfield=&isexitingcontrolrequest=false';
-
-  const apiRes = await httpReq('POST', 'https://www.antalya.bel.tr/tr/seolink/VueData/GetVueData', body, {
+// gezipanel panelinden belirtilen tarihin PDF URL'ini alır (yoksa null).
+async function getHalPdfUrl(dateStr) {
+  const res = await httpsRequestRaw('POST', HAL_PDF_ENDPOINT, JSON.stringify({ tarih: dateStr }), {
+    'Content-Type': 'application/json; charset=utf-8',
     'X-Requested-With': 'XMLHttpRequest',
-    'Referer': 'https://www.antalya.bel.tr/tr/halden-gunluk-fiyatlar',
-    'Cookie': cookie,
+    'Referer': HAL_PANEL_REFERER,
   });
-
   let parsed;
-  try { parsed = JSON.parse(apiRes.data); } catch(e) { throw new Error('API yanıtı parse edilemedi'); }
-  if (!parsed.issuccess) throw new Error('API başarısız');
-
-  let innerData;
-  try { innerData = JSON.parse(parsed.data); } catch(e) { throw new Error('İç veri parse edilemedi'); }
-  return innerData.products || [];
+  try { parsed = JSON.parse(res.buffer.toString('utf8')); } catch(e) { throw new Error('PDF URL yanıtı parse edilemedi'); }
+  const d = parsed.d || parsed;
+  if (!d || !d.PdfUrl) return null; // { d: { Mesaj: 'Fiyat listesi bulunamadı.' } }
+  if (/^https?:\/\//.test(d.PdfUrl)) return d.PdfUrl;
+  return 'https://' + HAL_PANEL_HOST + (d.PdfUrl.startsWith('/') ? '' : '/') + d.PdfUrl;
 }
 
-function mapHalProduct(p) {
-  return {
-    name:  p.urun_adi || '',
-    low:   typeof p.en_dusuk_fiyat  === 'string' ? p.en_dusuk_fiyat  : String(p.en_dusuk_fiyat_sayi  || ''),
-    high:  typeof p.en_yuksek_fiyat === 'string' ? p.en_yuksek_fiyat : String(p.en_yuksek_fiyat_sayi || ''),
-    lowN:  typeof p.en_dusuk_fiyat_sayi  === 'number' ? p.en_dusuk_fiyat_sayi  : null,
-    highN: typeof p.en_yuksek_fiyat_sayi === 'number' ? p.en_yuksek_fiyat_sayi : null,
-    unit:  (p.birim_adi_combobox && p.birim_adi_combobox.birim_adi) || p.refUnitId || '',
-  };
+// PDF tamponundan ürün listesini çıkarır. PDF iki sütunlu tablo; düz metinde her
+// ürün "<ad> <birim> <en_dusuk> <en_yuksek>" kalıbında geçer.
+async function parseHalPdf(buffer) {
+  const { PDFParse } = require('pdf-parse');
+  const parser = new PDFParse({ data: buffer });
+  let txt = '';
+  try {
+    const res = await parser.getText();
+    txt = res.text || '';
+  } finally {
+    if (parser && typeof parser.destroy === 'function') { try { await parser.destroy(); } catch (_) {} }
+  }
+  const re = /([^\d\n][^\n]*?)\s+(Kg|Bağ|Adet|Demet|Deste|Pk\/\d+\s*(?:Gr|Kg)|Kg\/\S+)\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+  const items = [];
+  let m;
+  while ((m = re.exec(txt)) !== null) {
+    const name = m[1].replace(/^\s*\d+\s*/, '').trim(); // baştaki sıra numarasını at
+    if (!name) continue;
+    const unit = m[2].replace(/\s+/g, ' ').trim();
+    items.push({
+      name,
+      low:   m[3] + ' ₺',
+      high:  m[4] + ' ₺',
+      lowN:  parseTRNumber(m[3]),
+      highN: parseTRNumber(m[4]),
+      unit,
+    });
+  }
+  return items;
 }
 
-// Sadece istenen tarihe birebir eşleşen kayıtları döndürür (manuel/tarihli sync için).
+// İstenen tarihin PDF'inden ürünleri çeker (PDF yoksa boş dizi).
 async function scrapeHalDate(dateStr) {
-  const wanted = dateStr.replace(/-/g, '');
-  const products = (await fetchHalProducts(dateStr)).filter(p =>
-    p.tarih && String(p.tarih).slice(0, 8) === wanted
-  );
-  return products.map(mapHalProduct).filter(p => p.name);
+  const url = await getHalPdfUrl(dateStr);
+  if (!url) return [];
+  const res = await httpsRequestRaw('GET', url, null, { 'Referer': HAL_PANEL_REFERER });
+  if (res.status !== 200 || !res.buffer || res.buffer.length < 1000) return [];
+  return parseHalPdf(res.buffer);
 }
 
-// Belediyenin yayımladığı, verilen tarihten ileri OLMAYAN en güncel partiyi bulur.
-// API istenen tarih yoksa en yeni partiyi döndürdüğü için, gelecek tarihli hatalı
-// kayıtları elerken (<= bugün) mevcut en son gerçek fiyat listesini yakalar.
+// Verilen tarihten geriye doğru, PDF'i yayımlanmış en güncel günü bulur
+// (en çok 14 gün geriye bakar). Belediye her gün yayımlamadığından gereklidir.
 async function scrapeHalLatest(maxDateStr) {
-  const maxWanted = maxDateStr.replace(/-/g, '');
-  const products = await fetchHalProducts(maxDateStr);
-  const dates = [...new Set(products
-    .map(p => p.tarih && String(p.tarih).slice(0, 8))
-    .filter(d => d && d <= maxWanted))].sort();
-  if (!dates.length) return null;
-  const best = dates[dates.length - 1];
-  const iso = `${best.slice(0, 4)}-${best.slice(4, 6)}-${best.slice(6, 8)}`;
-  const items = products
-    .filter(p => String(p.tarih).slice(0, 8) === best)
-    .map(mapHalProduct)
-    .filter(p => p.name);
-  return { date: iso, items };
+  const start = new Date(maxDateStr + 'T00:00:00');
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() - i);
+    const iso = toISO(d);
+    const items = await scrapeHalDate(iso);
+    if (items.length > 0) return { date: iso, items };
+  }
+  return null;
 }
 
 async function syncHalDate(dateStr) {
