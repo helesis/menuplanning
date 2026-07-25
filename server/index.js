@@ -2436,7 +2436,9 @@ function priceStr(v) {
   return String(v);
 }
 
-async function scrapeHalDate(dateStr) {
+// Belediye MarketPrices API'sinden ham ürün listesini çeker (tarih filtresiz).
+// Her ürün kendi 'tarih' alanıyla (YYYYMMDD) döner.
+async function fetchHalProducts(dateStr) {
   // 1. CSRF token al
   const pageRes = await httpReq('GET', 'https://www.antalya.bel.tr/tr/halden-gunluk-fiyatlar', null, {});
   const tokenMatch = pageRes.data.match(/__RequestVerificationToken["'][^>]*value=["']([A-Za-z0-9_\-]+)/);
@@ -2464,22 +2466,46 @@ async function scrapeHalDate(dateStr) {
 
   let innerData;
   try { innerData = JSON.parse(parsed.data); } catch(e) { throw new Error('İç veri parse edilemedi'); }
+  return innerData.products || [];
+}
 
-  // Tarih doğrulaması: API, sorgulanan tarihte veri yoksa en yeni partiyi döndürüyor
-  // (örn. yanlış girilmiş gelecek tarihli kayıtlar). Sadece istenen tarihle
-  // eşleşen kayıtları kabul et — eşleşme yoksa "henüz yayınlanmamış" sayılır.
-  const wanted = dateStr.replace(/-/g, '');
-  const products = (innerData.products || []).filter(p =>
-    p.tarih && String(p.tarih).slice(0, 8) === wanted
-  );
-  return products.map(p => ({
+function mapHalProduct(p) {
+  return {
     name:  p.urun_adi || '',
     low:   typeof p.en_dusuk_fiyat  === 'string' ? p.en_dusuk_fiyat  : String(p.en_dusuk_fiyat_sayi  || ''),
     high:  typeof p.en_yuksek_fiyat === 'string' ? p.en_yuksek_fiyat : String(p.en_yuksek_fiyat_sayi || ''),
     lowN:  typeof p.en_dusuk_fiyat_sayi  === 'number' ? p.en_dusuk_fiyat_sayi  : null,
     highN: typeof p.en_yuksek_fiyat_sayi === 'number' ? p.en_yuksek_fiyat_sayi : null,
     unit:  (p.birim_adi_combobox && p.birim_adi_combobox.birim_adi) || p.refUnitId || '',
-  })).filter(p => p.name);
+  };
+}
+
+// Sadece istenen tarihe birebir eşleşen kayıtları döndürür (manuel/tarihli sync için).
+async function scrapeHalDate(dateStr) {
+  const wanted = dateStr.replace(/-/g, '');
+  const products = (await fetchHalProducts(dateStr)).filter(p =>
+    p.tarih && String(p.tarih).slice(0, 8) === wanted
+  );
+  return products.map(mapHalProduct).filter(p => p.name);
+}
+
+// Belediyenin yayımladığı, verilen tarihten ileri OLMAYAN en güncel partiyi bulur.
+// API istenen tarih yoksa en yeni partiyi döndürdüğü için, gelecek tarihli hatalı
+// kayıtları elerken (<= bugün) mevcut en son gerçek fiyat listesini yakalar.
+async function scrapeHalLatest(maxDateStr) {
+  const maxWanted = maxDateStr.replace(/-/g, '');
+  const products = await fetchHalProducts(maxDateStr);
+  const dates = [...new Set(products
+    .map(p => p.tarih && String(p.tarih).slice(0, 8))
+    .filter(d => d && d <= maxWanted))].sort();
+  if (!dates.length) return null;
+  const best = dates[dates.length - 1];
+  const iso = `${best.slice(0, 4)}-${best.slice(4, 6)}-${best.slice(6, 8)}`;
+  const items = products
+    .filter(p => String(p.tarih).slice(0, 8) === best)
+    .map(mapHalProduct)
+    .filter(p => p.name);
+  return { date: iso, items };
 }
 
 async function syncHalDate(dateStr) {
@@ -2493,6 +2519,22 @@ async function syncHalDate(dateStr) {
     return { ok: true, date: dateStr, count: items.length };
   } catch(e) {
     return { error: e.message, date: dateStr };
+  }
+}
+
+// Bugüne kadar yayımlanmış en güncel partiyi çeker, gerçek yayım tarihiyle kaydeder.
+async function syncHalLatest() {
+  const today = toISO(new Date());
+  try {
+    const latest = await scrapeHalLatest(today);
+    if (!latest || latest.items.length === 0) return { empty: true, date: today };
+    const existing = db.get('halPrices').find({ date: latest.date }).value();
+    if (existing && existing.items && existing.items.length > 0) return { skipped: true, date: latest.date, count: existing.items.length };
+    db.get('halPrices').remove({ date: latest.date }).write();
+    db.get('halPrices').push({ date: latest.date, region: HAL_REGION_NAME, syncedAt: new Date().toISOString(), items: latest.items }).write();
+    return { ok: true, date: latest.date, count: latest.items.length };
+  } catch(e) {
+    return { error: e.message, date: today };
   }
 }
 
@@ -2572,7 +2614,7 @@ async function sendAlertEmail(alerts, date) {
 cron.schedule('30 12 * * *', async () => {
   const today = toISO(new Date());
   console.log(`[HAL] Otomatik senkronizasyon: ${today}`);
-  const result = await syncHalDate(today);
+  const result = await syncHalLatest();
   console.log('[HAL]', result);
 
   // Uyarıları hesapla ve e-posta gönder
@@ -2635,8 +2677,7 @@ app.post('/api/hal/test-email', authMiddleware, async (req, res) => {
 // Manuel sync endpoint
 app.post('/api/hal/sync', authMiddleware, async (req, res) => {
   const { date } = req.body;
-  const d = date || toISO(new Date());
-  const result = await syncHalDate(d);
+  const result = date ? await syncHalDate(date) : await syncHalLatest();
   res.json(result);
 });
 
